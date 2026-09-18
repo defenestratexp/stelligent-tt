@@ -1,37 +1,54 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Kubernetes ECR Repository"
+Description: >-
+  Stelligent-U module 15: private ECR repository for the sample app image.
+  Nodes in the same account pull from it through their node IAM role, so the
+  repository needs no repository policy.
 
 Parameters:
   Prefix:
     Type: String
-    Description: ECR Repostory Prefix
+    Description: Your identifier; the repository is named <Prefix>-kubernetes
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{1,30}$"
+    ConstraintDescription: lowercase letters, digits and hyphens, 2-31 characters
 
 Resources:
-
-  KubernetesECR:
+  Repository:
     Type: AWS::ECR::Repository
-    Properties: 
+    Properties:
       RepositoryName: !Sub "${Prefix}-kubernetes"
-      RepositoryPolicyText: 
-        Version: "2012-10-17"
-        Statement: 
-          - 
-            Sid: AllowPushPull
-            Effect: Allow
-            Principal: 
-              AWS: 
-                - !Sub "arn:aws:iam::${AWS::AccountId}:root"
-            Action: 
-              - "ecr:GetDownloadUrlForLayer"
-              - "ecr:BatchGetImage"
-              - "ecr:BatchCheckLayerAvailability"
-              - "ecr:PutImage"
-              - "ecr:InitiateLayerUpload"
-              - "ecr:UploadLayerPart"
-              - "ecr:CompleteLayerUpload"
-              - "ecr:GetAuthorizationToken"
+      # A tag, once pushed, always points at the same image. Push v1, v2, ...
+      # instead of overwriting "latest".
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      # Lets CloudFormation delete the repository even if images remain.
+      EmptyOnDelete: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep the 10 most recent images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+        - Key: owner
+          Value: !Ref Prefix
+        - Key: topic
+          Value: "15"
 
 Outputs:
-  ECRRepoName:
-    Value: !Ref KubernetesECR
-    Description: ECR Repository Name
+  RepositoryName:
+    Description: ECR repository name
+    Value: !Ref Repository
+  RepositoryUri:
+    Description: Use this as the image name when you tag and push
+    Value: !GetAtt Repository.RepositoryUri
