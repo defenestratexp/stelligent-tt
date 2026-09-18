@@ -1,0 +1,19 @@
+{
+  "version": "0",
+  "id": "f1d9c3a2-7a0e-4c55-8f0d-1f4b1c8e2d33",
+  "detail-type": "OrderPlaced",
+  "source": "you.orders",
+  "account": "123456789012",
+  "time": "2026-09-18T14:02:12Z",
+  "region": "us-east-2",
+  "resources": [],
+  "detail": {
+    "orderId": "5e2f7d61-3c3a-4a0f-b2a3-7f5d5c9b1a02",
+    "sequence": 2,
+    "customerId": "c-031",
+    "channel": "partner",
+    "items": 1,
+    "total": 12.99,
+    "currency": "USD"
+  }
+}
