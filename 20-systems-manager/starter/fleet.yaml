@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Topic 20 starter: a two-instance Amazon Linux 2023 "fleet" (one dev, one
+  prod) for the Systems Manager labs. Instances are reachable only through
+  Session Manager: no key pair, no inbound rules, IMDSv2 required. Each runs
+  nginx on port 80 so there is something to port-forward to and to patch.
+
+Parameters:
+  Owner:
+    Type: String
+    Description: Your identifier, used in names and tags.
+    AllowedPattern: "[a-z0-9-]+"
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The VPC for the lab (the default VPC is fine).
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: >-
+      A subnet with a route to the internet (a default-VPC subnet works), so
+      the SSM Agent can reach Systems Manager and dnf can reach the AL2023
+      repositories.
+  FleetImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Description: >-
+      The AMI, looked up from an SSM parameter. Lesson 20.5 points this at the
+      parameter your Image Builder pipeline writes.
+  FleetInstanceType:
+    Type: String
+    Default: t4g.micro
+    AllowedValues:
+      - t4g.micro
+      - t4g.small
+      - t3.micro
+      - t3.small
+    Description: Must match the AMI's architecture (t4g = arm64, t3 = x86_64).
+
+Resources:
+  FleetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      # TODO(student): Lab 20.1.2. Session logs, Run Command output and
+      # inventory sync are written by the instance, not by you. Add a policy
+      # that lets it write to your log bucket and log group (see the Session
+      # Manager docs for the exact actions).
+      Tags:
+        - Key: owner
+          Value: !Ref Owner
+
+  FleetInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref FleetRole
+
+  # No inbound rules. Session Manager connects outbound from the instance.
+  # Lab 20.1.4 asks you to add exactly one rule here, and to justify it.
+  FleetSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Topic 20 fleet. No inbound rules.
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-ssm-fleet
+        - Key: owner
+          Value: !Ref Owner
+
+  FleetLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref FleetImageId
+        InstanceType: !Ref FleetInstanceType
+        IamInstanceProfile:
+          Arn: !GetAtt FleetInstanceProfile.Arn
+        SecurityGroupIds:
+          - !Ref FleetSecurityGroup
+        MetadataOptions:
+          HttpTokens: required
+          HttpEndpoint: enabled
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeType: gp3
+              Encrypted: true
+              DeleteOnTermination: true
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            dnf install -y nginx
+            echo "hello from $(hostname)" > /usr/share/nginx/html/index.html
+            systemctl enable --now nginx
+
+  DevInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      SubnetId: !Ref SubnetId
+      LaunchTemplate:
+        LaunchTemplateId: !Ref FleetLaunchTemplate
+        Version: !GetAtt FleetLaunchTemplate.LatestVersionNumber
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-web-dev
+        - Key: owner
+          Value: !Ref Owner
+        - Key: Environment
+          Value: dev
+
+  ProdInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      SubnetId: !Ref SubnetId
+      LaunchTemplate:
+        LaunchTemplateId: !Ref FleetLaunchTemplate
+        Version: !GetAtt FleetLaunchTemplate.LatestVersionNumber
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-web-prod
+        - Key: owner
+          Value: !Ref Owner
+        - Key: Environment
+          Value: prod
+
+Outputs:
+  DevInstanceId:
+    Description: Use with aws ssm start-session --target
+    Value: !Ref DevInstance
+  ProdInstanceId:
+    Description: Use with aws ssm start-session --target
+    Value: !Ref ProdInstance
+  ProdPrivateIp:
+    Description: Remote host for the port-forwarding lab
+    Value: !GetAtt ProdInstance.PrivateIp
+  FleetRoleName:
+    Description: Attach extra policies to this role in later labs
+    Value: !Ref FleetRole
