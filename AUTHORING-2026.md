@@ -65,7 +65,7 @@ Use these; do not reintroduce the old behaviour.
   Amazon Linux 1 and 2, Ubuntu ≤ 20.04 and Windows 2012 R2 are end of life. AL2023 uses `dnf`
   and systemd; install `aws-cfn-bootstrap` explicitly when cfn-init is needed.
 - **EC2:** IMDSv2 required; gp3 volumes; t3/t4g (not t2).
-- **Lambda runtimes:** Python 3.12/3.13, Node.js 22. AWS SDK for JavaScript v3 only.
+- **Lambda runtimes:** Python 3.12–3.14, Node.js 22/24 (examples use Python 3.13, Node.js 22). AWS SDK for JavaScript v3 only.
 - **S3:** new buckets have Block Public Access on and ACLs disabled (Object Ownership =
   BucketOwnerEnforced); all objects are encrypted with SSE-S3 by default.
 - **Events:** "CloudWatch Events" is EventBridge. S3 can send events to EventBridge directly;
@@ -85,6 +85,9 @@ Use these; do not reintroduce the old behaviour.
 - **Systems Manager:** the advanced-instances tier is gone (2026-06-30); hybrid nodes register
   free and pay per session/command. Change Manager and Incident Manager are closed to new
   customers; prefer patch policies over patch groups.
+- **CDK:** needs Node.js 22+; the CLI is versioned separately (2.1000.0+) with telemetry on by
+  default; cdk-nag 3 uses `Validations.of(...)`, not `NagSuppressions`. CDK for Terraform is
+  archived (December 2025).
 - **Placeholders:** `123456789012` for a single account; in multi-account labs follow module 19
   (`444455556666` management, `111122223333` lab, `o-exampleorgid`).
 - **Retired — do not use:** Cloud9, CodeStar, OpsWorks, CodeCatalyst (maintenance), CodeGuru
