@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Topic 21 helper: a tiny Amazon Linux 2023 instance in a VPC you choose, so
+  you have something inside the VPC to send DNS queries from. Connect with
+  Session Manager; there is no SSH and no inbound rule. Delete this stack at
+  the end of Lesson 21.1.
+
+Parameters:
+  StudentId:
+    Type: String
+    Description: Your identifier, used in names and tags.
+    AllowedPattern: "^[a-z0-9-]{2,20}$"
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The VPC your private hosted zone is associated with (the default VPC is fine).
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: >-
+      A subnet in that VPC with a route to the internet (a default-VPC subnet
+      works), so the SSM agent can reach Systems Manager.
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Description: AL2023 arm64 AMI, looked up from the SSM public parameter.
+
+Resources:
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: owner
+          Value: !Ref StudentId
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+  NoInboundSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: No inbound rules. Session Manager needs only outbound HTTPS.
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS to Systems Manager and the package repositories
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+          Description: DNS
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+          Description: DNS over TCP
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-dns-test
+        - Key: owner
+          Value: !Ref StudentId
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        MetadataOptions:
+          HttpTokens: required
+          HttpEndpoint: enabled
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            # dig and nslookup come from bind-utils
+            dnf install -y bind-utils
+
+  DnsTestInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: t4g.nano
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref NoInboundSecurityGroup
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-dns-test
+        - Key: owner
+          Value: !Ref StudentId
+
+Outputs:
+  InstanceId:
+    Description: Use with aws ssm start-session --target
+    Value: !Ref DnsTestInstance
+  PrivateIp:
+    Description: The instance's private IPv4 address
+    Value: !GetAtt DnsTestInstance.PrivateIp
