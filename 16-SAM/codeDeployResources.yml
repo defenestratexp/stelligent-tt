@@ -1,53 +1,79 @@
-beforeAllowTraffic:
-  Type: AWS::Serverless::Function
-  Properties:
-    Handler: lifecycleHook.handler
-    Policies:
-      - Version: "2012-10-17"
-        Statement:
-        - Effect: "Allow"
-          Action:
-            - "codedeploy:PutLifecycleEventHookExecutionStatus"
-          Resource:
-            !Sub 'arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*'
-      - Version: "2012-10-17"
-        Statement:
-        - Effect: "Allow"
-          Action:
-            - "lambda:InvokeFunction"
-          Resource: !Ref <Function>.Version
-    Runtime: nodejs8.10
-    FunctionName: 'CodeDeployHook_beforeAllowTraffic'
-    DeploymentPreference:
-      Enabled: false
-    Timeout: 5
-    Environment:
-      Variables:
-        NewVersion: !Ref <Function>.Version
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  Stelligent-U Lab 16.4.3 starter: CodeDeploy pre-traffic and post-traffic
+  hook functions for a SAM function that uses AutoPublishAlias and
+  DeploymentPreference. Copy the two hook resources into your own template.
 
-afterAllowTraffic:
-  Type: AWS::Serverless::Function
-  Properties:
-    Handler: lifecycleHook.handler
-    Policies:
-      - Version: "2012-10-17"
-        Statement:
-        - Effect: "Allow"
-          Action:
-            - "codedeploy:PutLifecycleEventHookExecutionStatus"
-          Resource:
-            !Sub 'arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*'
-      - Version: "2012-10-17"
-        Statement:
-        - Effect: "Allow"
-          Action:
-            - "lambda:InvokeFunction"
-          Resource: !Ref <Function>.Version
-    Runtime: nodejs8.10
-    FunctionName: 'CodeDeployHook_afterAllowTraffic'
-    DeploymentPreference:
-      Enabled: false
-    Timeout: 5
-    Environment:
-      Variables:
-        NewVersion: !Ref <Function>.Version
+# This file is a complete template so that it passes `sam validate --lint`
+# and cfn-lint on its own. HelloWorldFunction below is a stand-in for the
+# function in your `sam init` project: in your template, keep your own
+# function and replace every HelloWorldFunction reference in the hooks with
+# its logical ID.
+
+Resources:
+  # Stand-in for your application function. ServerlessDeploymentApplication,
+  # which the hooks' policies reference, only exists when at least one
+  # function in the template has a DeploymentPreference.
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Handler: index.handler
+      InlineCode: |
+        exports.handler = async () => ({
+          statusCode: 200,
+          body: JSON.stringify({ message: 'hello world' }),
+        });
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes
+        # TODO(student): add a Hooks property that references the two hook
+        # functions below (PreTraffic and PostTraffic), then, in Lab 16.4.4,
+        # an Alarms list.
+
+  # CodeDeploy runs this before any traffic moves to the new version.
+  PreTrafficHook:
+    Type: AWS::Serverless::Function
+    Properties:
+      # The CodeDeploy service role that SAM generates may only invoke
+      # functions whose names start with CodeDeployHook_.
+      FunctionName: !Sub CodeDeployHook_${AWS::StackName}-preTraffic
+      CodeUri: hooks/
+      Handler: lifecycleHook.handler
+      Runtime: nodejs22.x
+      Timeout: 30
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: codedeploy:PutLifecycleEventHookExecutionStatus
+              Resource: !Sub arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !Ref HelloWorldFunction.Version
+      Environment:
+        Variables:
+          NEW_VERSION: !Ref HelloWorldFunction.Version
+
+  # CodeDeploy runs this after all traffic has moved to the new version.
+  PostTrafficHook:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub CodeDeployHook_${AWS::StackName}-postTraffic
+      CodeUri: hooks/
+      Handler: lifecycleHook.handler
+      Runtime: nodejs22.x
+      Timeout: 30
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: codedeploy:PutLifecycleEventHookExecutionStatus
+              Resource: !Sub arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !Ref HelloWorldFunction.Version
+      Environment:
+        Variables:
+          NEW_VERSION: !Ref HelloWorldFunction.Version
