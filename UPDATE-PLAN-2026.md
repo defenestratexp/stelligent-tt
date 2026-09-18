@@ -1,6 +1,6 @@
 # Stelligent-U, 2026 Edition — Update Plan
 
-**Status:** approved 2026-09-18. Work happens on the `edition-2026` branch, one commit per module.
+**Status:** approved 2026-09-18; all 29 modules written 2026-09-18 on the `edition-2026` branch (one commit per module). Next: work through the labs in a real lab account and resolve the `<!-- VERIFY -->` markers.
 **Why:** the course was last updated upstream in October 2022. Retaking the AWS certifications
 in 2026 means working from material that still runs in a new AWS account and that covers what
 the current exam guides test. Each completed module also becomes a blog post.
