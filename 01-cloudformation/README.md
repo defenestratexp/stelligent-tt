@@ -82,7 +82,6 @@
 | DOP-C02 | Domain 2: Configuration Management and IaC |
 | DVA-C02 | Domain 3: Deployment (C03 adds GenAI / agent topics) |
 
-
 ## Cost and cleanup
 
 - CloudFormation itself costs nothing for `AWS::*` resource types, and
