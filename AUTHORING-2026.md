@@ -82,6 +82,9 @@ Use these; do not reintroduce the old behaviour.
   original product, now called Security Hub CSPM. Free trials: GuardDuty, Security Hub and
   Security Hub CSPM 30 days; Inspector 15 days. CloudTrail Lake is closed to new customers
   (2026-05-31) and Inspector Classic is end of support.
+- **Systems Manager:** the advanced-instances tier is gone (2026-06-30); hybrid nodes register
+  free and pay per session/command. Change Manager and Incident Manager are closed to new
+  customers; prefer patch policies over patch groups.
 - **Placeholders:** `123456789012` for a single account; in multi-account labs follow module 19
   (`444455556666` management, `111122223333` lab, `o-exampleorgid`).
 - **Retired — do not use:** Cloud9, CodeStar, OpsWorks, CodeCatalyst (maintenance), CodeGuru
