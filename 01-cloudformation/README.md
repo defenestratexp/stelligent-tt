@@ -82,8 +82,6 @@
 | DOP-C02 | Domain 2: Configuration Management and IaC |
 | DVA-C02 | Domain 3: Deployment (C03 adds GenAI / agent topics) |
 
-<!-- VERIFY: SOA-C03 domain number and name against the published exam
-guide; the guide page renders client-side and could not be checked. -->
 
 ## Cost and cleanup
 
