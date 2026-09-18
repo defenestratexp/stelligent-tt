@@ -1,11 +1,39 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Module 12 "application" stack: one S3 bucket, deployed by the pipeline you
+  build in Lesson 12.1. New buckets already have Block Public Access on, ACLs
+  disabled and SSE-S3 encryption, so the template doesn't repeat those settings.
+
 Parameters:
   BucketNameParameter:
     Type: String
-    Description: S3 Bucket Name
+    Default: ''
+    Description: >-
+      Optional bucket name. Leave empty to let CloudFormation generate a unique
+      name (better for portability; see Retrospective 12.1).
+  StudentId:
+    Type: String
+    Default: student
+    AllowedPattern: '[a-z0-9-]+'
+    Description: Your identifier, used in tags.
+
+Conditions:
+  HasBucketName: !Not [!Equals [!Ref BucketNameParameter, '']]
+
 Resources:
   S3Bucket:
     Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref BucketNameParameter
     DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !If [HasBucketName, !Ref BucketNameParameter, !Ref AWS::NoValue]
+      Tags:
+        - Key: topic
+          Value: '12'
+        - Key: owner
+          Value: !Ref StudentId
+
+Outputs:
+  BucketName:
+    Description: Name of the bucket; the Test stage can check it exists.
+    Value: !Ref S3Bucket
