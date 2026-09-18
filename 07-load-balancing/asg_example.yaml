@@ -1,49 +1,81 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Stelligent-U module 07 starter: an Auto Scaling group of nginx web servers
+  (Amazon Linux 2023, launch template, IMDSv2) that signals CloudFormation
+  when cfn-init finishes. Lab 7.1.1 adds the target group, load balancer and
+  listener.
+
+Parameters:
+  StudentId:
+    Type: String
+    Description: Your identifier, used in tags (for example jdoe).
+    AllowedPattern: '^[a-z0-9-]{2,20}$'
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: >-
+      VPC for the web servers (the default VPC, or the VPC from module 04).
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >-
+      At least two public subnets in different Availability Zones of VpcId.
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: Amazon Linux 2023 AMI, resolved from the SSM public parameter.
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+
 Resources:
-  WebServerAsg:
-    Type: 'AWS::AutoScaling::AutoScalingGroup'
+  # Lets you reach the instances with Session Manager instead of SSH.
+  WebServerRole:
+    Type: AWS::IAM::Role
     Properties:
-      AutoScalingGroupName: 'AutomationBoxes'
-      VPCZoneIdentifier:
-        - 'REPLACE_WITH_PUBLIC_SUBNET_IN_AZ1' # Find public subnets within the default VPC or 
-        - 'REPLACE_WITH_PUBLIC_SUBNET_IN_AZ2'
-      DesiredCapacity: '3'
-      HealthCheckType: 'ELB'
-      HealthCheckGracePeriod: 30 
-      LaunchConfigurationName: !Ref WebServersLC
-      MaxSize: '3'
-      MinSize: '3'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
 
-  WebServersLC:
-    Type: 'AWS::AutoScaling::LaunchConfiguration'
+  WebServerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
     Properties:
-      ImageId: 'REPLACE_WITH_AMAZON_LINUXV1_AMI'
-      InstanceType: 't2.micro'
-      LaunchConfigurationName: 'SimpleWebServerLC'
-      SecurityGroups:
-        - 'REPLACE'
-      UserData: 
-        Fn::Base64:
-          Fn::Sub: |
-            #!/bin/bash -xe
+      Roles:
+        - !Ref WebServerRole
 
-            yum install -y aws-cfn-bootstrap
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Web servers. No SSH; use Session Manager.
+      VpcId: !Ref VpcId
+      # No ingress yet. TODO(student): allow TCP 80 from the load balancer's
+      # security group only (SourceSecurityGroupId), not from 0.0.0.0/0.
+      SecurityGroupEgress:
+        - Description: HTTPS out for dnf, CloudFormation and Session Manager
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-web
+        - Key: Student
+          Value: !Ref StudentId
 
-            # Install the files and packages from the metadata
-            /opt/aws/bin/cfn-init -v \
-              --stack ${AWS::StackName} \
-              --resource WebServersLC \
-              --configsets All \
-              --region ${AWS::Region}
-
-            # Signal the status from cfn-init
-            /opt/aws/bin/cfn-signal -e $? \
-              --stack ${AWS::StackName} \
-              --resource WebServersLC \
-              --region ${AWS::Region}
-
+  WebServerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
     Metadata:
-      'AWS::CloudFormation::Init':
+      AWS::CloudFormation::Init:
         configSets:
           All:
             - ConfigureStelligentProject
@@ -58,7 +90,92 @@ Resources:
               owner: root
               group: root
           services:
-            sysvinit:
+            systemd:
               nginx:
                 enabled: 'true'
                 ensureRunning: 'true'
+                files:
+                  - /usr/share/nginx/html/index.html
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref LatestAmiId
+        InstanceType: !Ref InstanceType
+        IamInstanceProfile:
+          Arn: !GetAtt WebServerInstanceProfile.Arn
+        MetadataOptions:
+          HttpTokens: required
+          HttpEndpoint: enabled
+          HttpPutResponseHopLimit: 1
+        # Public IPs let the instances reach dnf and CloudFormation without a
+        # NAT gateway. Each one is billed as a public IPv4 address.
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: true
+            Groups:
+              - !Ref WebServerSecurityGroup
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub ${StudentId}-web
+              - Key: Student
+                Value: !Ref StudentId
+          - ResourceType: volume
+            Tags:
+              - Key: Student
+                Value: !Ref StudentId
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -x
+            # No "-e": if cfn-init fails we still want cfn-signal to report it.
+
+            # AL2023 doesn't guarantee the helper scripts; install them.
+            dnf install -y aws-cfn-bootstrap
+
+            # Apply the AWS::CloudFormation::Init metadata on the launch template.
+            /opt/aws/bin/cfn-init -v \
+              --stack ${AWS::StackName} \
+              --resource WebServerLaunchTemplate \
+              --configsets All \
+              --region ${AWS::Region}
+
+            # Signal the Auto Scaling group: it owns the CreationPolicy.
+            /opt/aws/bin/cfn-signal -e $? \
+              --stack ${AWS::StackName} \
+              --resource WebServerAsg \
+              --region ${AWS::Region}
+
+  WebServerAsg:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      ResourceSignal:
+        Count: 3
+        Timeout: PT10M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 1
+        WaitOnResourceSignals: true
+        PauseTime: PT10M
+    Properties:
+      VPCZoneIdentifier: !Ref PublicSubnetIds
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebServerLaunchTemplate
+        Version: !GetAtt WebServerLaunchTemplate.LatestVersionNumber
+      MinSize: '3'
+      MaxSize: '3'
+      DesiredCapacity: '3'
+      # TODO(student): attach the target group (TargetGroupARNs) and switch to
+      # HealthCheckType ELB with a HealthCheckGracePeriod (Lab 7.1.1).
+      HealthCheckType: EC2
+      HealthCheckGracePeriod: 60
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+          PropagateAtLaunch: false
+
+Outputs:
+  AutoScalingGroupName:
+    Value: !Ref WebServerAsg
+  WebServerSecurityGroupId:
+    Value: !Ref WebServerSecurityGroup

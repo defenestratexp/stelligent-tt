@@ -1,0 +1,15 @@
+# cfn-lint configuration for the CloudFormation templates the course ships.
+# Non-CloudFormation YAML (Jenkins JCasC, Kubernetes, eksctl, buildspecs, CI) is excluded.
+templates:
+  - "*/**/*.yaml"
+  - "*/**/*.yml"
+ignore_templates:
+  - ".github/**"
+  - "templates/**"
+  - "14-Jenkins/jenkins/**"
+  - "15-Kubernetes/eksctl/**"
+  - "15-Kubernetes/k8s/**"
+  - "**/buildspec*.yml"
+  - "**/buildspec*.yaml"
+  - "**/docker-compose*.yml"
+  - "**/samconfig*.yaml"

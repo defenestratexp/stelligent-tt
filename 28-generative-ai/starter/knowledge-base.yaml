@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Topic 28 starter (Lesson 28.3): a Bedrock knowledge base backed by Amazon
+  S3 Vectors, the low-cost vector store. The document bucket, vector bucket,
+  vector index and knowledge base are here; the S3 read permissions for the
+  service role and the data source are left for you. Finish the
+  TODO(student) items, then deploy with the lab profile in us-east-2.
+
+Parameters:
+  Owner:
+    Type: String
+    Description: Your identifier, used in names and tags (lowercase letters, digits and hyphens).
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{1,20}$"
+  EmbeddingModelId:
+    Type: String
+    Default: amazon.titan-embed-text-v2:0
+    Description: Embedding model. Titan Text Embeddings V2 is available in-Region in us-east-2.
+  EmbeddingDimensions:
+    Type: Number
+    Default: 512
+    AllowedValues: [256, 512, 1024]
+    Description: Titan Text Embeddings V2 supports 256, 512 or 1024. The index must match.
+
+Resources:
+  DocsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub "${Owner}-kb-docs-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: owner
+          Value: !Ref Owner
+        - Key: topic
+          Value: "28"
+
+  VectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+    Properties:
+      VectorBucketName: !Sub "${Owner}-kb-vectors"
+
+  VectorIndex:
+    Type: AWS::S3Vectors::Index
+    Properties:
+      VectorBucketArn: !GetAtt VectorBucket.VectorBucketArn
+      IndexName: !Sub "${Owner}-kb-index"
+      DataType: float32
+      Dimension: !Ref EmbeddingDimensions
+      DistanceMetric: cosine
+      MetadataConfiguration:
+        # Bedrock stores the chunk text and its own bookkeeping here. They
+        # are large, so they must not count against filterable metadata.
+        NonFilterableMetadataKeys:
+          - AMAZON_BEDROCK_TEXT
+          - AMAZON_BEDROCK_METADATA
+
+  KnowledgeBaseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Owner}-kb-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
+      Policies:
+        - PolicyName: embed-and-store
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: InvokeEmbeddingModel
+                Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${EmbeddingModelId}"
+              - Sid: ReadWriteVectorIndex
+                Effect: Allow
+                Action:
+                  - s3vectors:PutVectors
+                  - s3vectors:GetVectors
+                  - s3vectors:DeleteVectors
+                  - s3vectors:QueryVectors
+                  - s3vectors:GetIndex
+                Resource: !GetAtt VectorIndex.IndexArn
+              # TODO(student): add the two statements that let the role list
+              # DocsBucket and read its objects, scoped to this account with
+              # aws:ResourceAccount. Nothing else.
+      Tags:
+        - Key: owner
+          Value: !Ref Owner
+
+  KnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    Properties:
+      Name: !Sub "${Owner}-kb"
+      Description: Topic 28 knowledge base over the Trailhead Outfitters corpus.
+      RoleArn: !GetAtt KnowledgeBaseRole.Arn
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${EmbeddingModelId}"
+          EmbeddingModelConfiguration:
+            BedrockEmbeddingModelConfiguration:
+              Dimensions: !Ref EmbeddingDimensions
+              EmbeddingDataType: FLOAT32
+      StorageConfiguration:
+        Type: S3_VECTORS
+        S3VectorsConfiguration:
+          IndexArn: !GetAtt VectorIndex.IndexArn
+      Tags:
+        owner: !Ref Owner
+        topic: "28"
+
+  # TODO(student): add an AWS::Bedrock::DataSource that points the knowledge
+  # base at DocsBucket. Choose a chunking strategy on purpose (Lab 28.3.4
+  # compares two), and set DataDeletionPolicy so deleting the data source
+  # also deletes its vectors.
+
+Outputs:
+  DocsBucketName:
+    Value: !Ref DocsBucket
+  KnowledgeBaseId:
+    Value: !GetAtt KnowledgeBase.KnowledgeBaseId
+  VectorIndexArn:
+    Value: !GetAtt VectorIndex.IndexArn

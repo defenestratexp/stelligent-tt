@@ -1,268 +1,519 @@
-Description: Jenkins Continuous Learning
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Stelligent-U module 14 starter: a Jenkins LTS controller (Amazon Linux 2023,
+  Java 21, IMDSv2) that nobody can reach from the internet. You reach the UI
+  through Session Manager port forwarding. The stack also creates what the
+  EC2 plugin needs to launch short-lived build agents with the controller's
+  instance role: an agent role, agent security group and key pair. It creates
+  a bucket for configuration-as-code files and build artifacts too.
+
 Parameters:
-  PrivateIp:
+  StudentId:
     Type: String
-    Description: Private Ip used for the VPC
-    Default: 10.0.0.0
-  VPCMask:
+    Description: Your identifier, used in names and tags (for example jdoe).
+    AllowedPattern: '^[a-z0-9-]{2,20}$'
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC for the controller and agents (the default VPC is fine).
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: >-
+      A public subnet in VpcId (route to an internet gateway). The controller
+      and agents get public IPv4 addresses so they can reach dnf, the Jenkins
+      update center, Maven Central and Systems Manager without a NAT gateway.
+      Nothing is allowed in from the internet.
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: >-
+      Amazon Linux 2023 AMI for the controller and the agents, resolved from
+      the SSM public parameter each time the stack is created or updated.
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  ControllerInstanceType:
     Type: String
-    Description: Mask used for the VPC
-    Default: 16
-  IAMUserOwnerOfResources:
+    Description: Jenkins needs about 2 GiB of heap to be comfortable; t3.medium has 4 GiB.
+    Default: t3.medium
+    AllowedValues:
+      - t3.small
+      - t3.medium
+      - t3.large
+  PluginManagerVersion:
     Type: String
-    Description: IAM user that is owner of this CFN stack
-  EC2InstanceAmi:
-    Type: AWS::EC2::Image::Id
-    Description: EC2 Instance AMI
-    Default: ami-014534a11156c1a0d
-  EC2KeyName:
-    Type: String
-    Description: Name of the EC2 keys used for ssh
-    Default: <If using this parameter, provide default name>
-  IAMUserOwnerIp:
-    Type: String
-    Description: IP of the Iam user owner
-    Default: <If using this parameter,provide default IP>
-  EC2InstanceType:
-    Type: String
-    Default: <If using this parameter, provide instance>  
+    Description: >-
+      Release of the Jenkins plugin installation manager tool used to install
+      plugins.txt (github.com/jenkinsci/plugin-installation-manager-tool).
+    Default: 2.15.0
+    AllowedPattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+
 Resources:
-  MyVpc:
-    Type: AWS::EC2::VPC
+  # ------------------------------------------------------------------
+  # Storage for configuration as code and for build artifacts
+  # ------------------------------------------------------------------
+  JenkinsBucket:
+    Type: AWS::S3::Bucket
     Properties:
-      CidrBlock: !Join ['/', [!Ref PrivateIp, !Ref VPCMask ] ]
-      Tags: &ResourceTags
-        -
-          Key: user
-          Value: !Ref IAMUserOwnerOfResources
-        -
-          Key: stack
-          Value: !Ref "AWS::StackId"
-  MySubnet:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref MyVpc
-      CidrBlock: !Join ['/', [!Ref PrivateIp, '25' ] ]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-build-artifacts
+            Status: Enabled
+            Prefix: artifacts/
+            ExpirationInDays: 30
       Tags:
-        -
-          Key: user
-          Value: !Ref IAMUserOwnerOfResources
-        -
-          Key: stack
-          Value: !Ref "AWS::StackId"
-  MyInternetGateway:
-    Type: AWS::EC2::InternetGateway
-  AttachInternetGatewayToVpc:
-    Type: AWS::EC2::VPCGatewayAttachment
+        - Key: Student
+          Value: !Ref StudentId
+
+  # ------------------------------------------------------------------
+  # Secrets the controller reads at boot. Neither is an AWS credential.
+  # ------------------------------------------------------------------
+  # CloudFormation stores the private key in Parameter Store as
+  # /ec2/keypair/<key pair ID> and deletes it with the stack. The EC2 plugin
+  # matches the private key to this key pair by fingerprint.
+  AgentKeyPair:
+    Type: AWS::EC2::KeyPair
     Properties:
-      InternetGatewayId: !Ref MyInternetGateway
-      VpcId: !Ref MyVpc
-  MyRouteTable:
-    Type: AWS::EC2::RouteTable
+      KeyName: !Sub ${StudentId}-jenkins-agents
+      KeyType: rsa
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  AdminPasswordSecret:
+    Type: AWS::SecretsManager::Secret
     Properties:
-      VpcId: !Ref MyVpc
-  SubnetRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref MyRouteTable
-      SubnetId: !Ref MySubnet
-  MyRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref MyRouteTable
-      GatewayId: !Ref MyInternetGateway
-      DestinationCidrBlock: '0.0.0.0/0'
-  MyEC2SecurityGroup:
+      # No fixed Name, so deleting and re-creating the stack never collides
+      # with a secret that is still scheduled for deletion.
+      Description: Password for the Jenkins "admin" user defined in JCasC (Lab 14.2.2).
+      GenerateSecretString:
+        PasswordLength: 24
+        ExcludePunctuation: true
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  # ------------------------------------------------------------------
+  # Network: no inbound rules on the controller at all
+  # ------------------------------------------------------------------
+  ControllerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow ICMP/ping & SSH access
-      GroupName:  !Join ['-', [!Ref 'AWS::StackName', SecurityGroup] ]
-      VpcId: !Ref MyVpc
-      SecurityGroupIngress:
-        -
-          FromPort: 22
-          ToPort: 22
+      GroupDescription: Jenkins controller. No inbound rules; use Session Manager.
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - Description: HTTPS out for dnf, the update center, S3 and Systems Manager
           IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: 0.0.0.0/0
-        -
-          FromPort: -1
-          ToPort: -1
-          IpProtocol: icmp
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-jenkins-controller
+        - Key: Student
+          Value: !Ref StudentId
+
+  AgentSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Jenkins agents. SSH from the controller only.
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - Description: HTTPS out for dnf, Git and Maven Central
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: 0.0.0.0/0
-  MyEC2InstanceIp:
-    Type: AWS::EC2::EIP
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-jenkins-agents
+        - Key: Student
+          Value: !Ref StudentId
+
+  # The EC2 plugin launches Linux agents by connecting to them over SSH from
+  # the controller. These two rules allow exactly that path and no other.
+  ControllerToAgentsSsh:
+    Type: AWS::EC2::SecurityGroupEgress
     Properties:
-      Domain: vpc
-      InstanceId: !Ref MyEC2Instance
-  MyEC2Instance:
+      GroupId: !GetAtt ControllerSecurityGroup.GroupId
+      Description: SSH to build agents
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      DestinationSecurityGroupId: !GetAtt AgentSecurityGroup.GroupId
+
+  AgentsFromControllerSsh:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt AgentSecurityGroup.GroupId
+      Description: SSH from the Jenkins controller only
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId: !GetAtt ControllerSecurityGroup.GroupId
+
+  # ------------------------------------------------------------------
+  # Agent identity: what a build is allowed to do in AWS
+  # ------------------------------------------------------------------
+  AgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Role for Jenkins build agents. Builds get these permissions, nothing more.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      # No policies yet. TODO(student): Lab 14.4.3. Give builds only what the
+      # pipeline needs (for example, read one parameter or deploy one stack).
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  AgentInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref AgentRole
+
+  # ------------------------------------------------------------------
+  # Controller identity: Session Manager, the EC2 plugin, its own secrets
+  # ------------------------------------------------------------------
+  ControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Jenkins controller. Launches agents with its instance role; no stored AWS keys.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      # TODO(student): Lab 14.1.3. Add the permissions the CloudWatch agent
+      # needs to ship the Jenkins log.
+      Policies:
+        - PolicyName: ec2-plugin-agents
+          # A trimmed, scoped version of the policy in the EC2 plugin's
+          # documentation. Lab 14.3.2 asks you to compare the two.
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: DescribeCallsHaveNoResourceLevelPermissions
+                Effect: Allow
+                Action:
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeImages
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceTypes
+                  - ec2:DescribeKeyPairs
+                  - ec2:DescribeRegions
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSpotInstanceRequests
+                  - ec2:DescribeSubnets
+                Resource: '*'
+              - Sid: LaunchOnlyTaggedAgents
+                Effect: Allow
+                Action: ec2:RunInstances
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*
+                Condition:
+                  StringEquals:
+                    aws:RequestTag/jenkins_cloud_name: !Sub ${StudentId}-agents
+              - Sid: LaunchOnlyFromTheseResources
+                Effect: Allow
+                Action: ec2:RunInstances
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}::image/${LatestAmiId}
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:subnet/${SubnetId}
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${AgentSecurityGroup.GroupId}
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:key-pair/${AgentKeyPair}
+              - Sid: TagAtLaunch
+                Effect: Allow
+                Action: ec2:CreateTags
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*
+                Condition:
+                  StringEquals:
+                    ec2:CreateAction: RunInstances
+              - Sid: ManageOnlyOwnAgents
+                Effect: Allow
+                Action:
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                  - ec2:GetConsoleOutput
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                  - ec2:TerminateInstances
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Condition:
+                  StringEquals:
+                    aws:ResourceTag/jenkins_cloud_name: !Sub ${StudentId}-agents
+              - Sid: PassOnlyTheAgentRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt AgentRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ec2.amazonaws.com
+        - PolicyName: controller-secrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AgentPrivateKey
+                Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ec2/keypair/${AgentKeyPair.KeyPairId}
+              - Sid: AdminPassword
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref AdminPasswordSecret
+        - PolicyName: controller-bucket
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ListOwnPrefixes
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt JenkinsBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - jenkins/*
+                      - artifacts/*
+              - Sid: ReadConfiguration
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub ${JenkinsBucket.Arn}/jenkins/*
+              # TODO(student): Lab 14.4.2. Artifact Manager on S3 needs more
+              # than this; read its README and add only what it asks for.
+              - Sid: ReadWriteArtifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub ${JenkinsBucket.Arn}/artifacts/*
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  ControllerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref ControllerRole
+
+  # AWS::EC2::Instance has no metadata options of its own, so IMDSv2 is set
+  # in a launch template that the instance uses.
+  ControllerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        MetadataOptions:
+          HttpTokens: required
+          HttpEndpoint: enabled
+          HttpPutResponseHopLimit: 1
+        TagSpecifications:
+          - ResourceType: volume
+            Tags:
+              - Key: Name
+                Value: !Sub ${StudentId}-jenkins-home
+              - Key: Student
+                Value: !Ref StudentId
+
+  ControllerInstance:
     Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT20M
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          Jenkins:
+            - AddJenkinsRepository
+            - InstallJenkins
+            - ConfigureJenkins
+        AddJenkinsRepository:
+          files:
+            /etc/yum.repos.d/jenkins.repo:
+              source: https://pkg.jenkins.io/rpm-stable/jenkins.repo
+              mode: '000644'
+              owner: root
+              group: root
+        InstallJenkins:
+          commands:
+            # dnf imports the repository's signing key on first use (-y).
+            01-install-packages:
+              command: dnf install -y fontconfig java-21-amazon-corretto-headless jenkins
+            02-install-plugin-manager:
+              command: !Sub |
+                set -e
+                mkdir -p /opt/jenkins-plugin-manager
+                cd /opt/jenkins-plugin-manager
+                base=https://github.com/jenkinsci/plugin-installation-manager-tool/releases/download/${PluginManagerVersion}
+                curl -fsSLO "$base/jenkins-plugin-manager-${PluginManagerVersion}.jar"
+                curl -fsSLO "$base/jenkins-plugin-manager-${PluginManagerVersion}.jar.sha256"
+                echo "$(cat jenkins-plugin-manager-${PluginManagerVersion}.jar.sha256)  jenkins-plugin-manager-${PluginManagerVersion}.jar" | sha256sum -c -
+                ln -sf "jenkins-plugin-manager-${PluginManagerVersion}.jar" jenkins-plugin-manager.jar
+        ConfigureJenkins:
+          files:
+            # Everything Jenkins needs to know about this stack arrives as
+            # environment variables, which JCasC reads as ${NAME}.
+            /etc/systemd/system/jenkins.service.d/override.conf:
+              content: !Sub |
+                [Service]
+                # Listen on the loopback interface only. Session Manager port
+                # forwarding connects to localhost on the instance.
+                Environment="JENKINS_LISTEN_ADDRESS=127.0.0.1"
+                Environment="CASC_JENKINS_CONFIG=/var/lib/jenkins/casc_configs"
+                Environment="AWS_REGION=${AWS::Region}"
+                Environment="JENKINS_BUCKET=${JenkinsBucket}"
+                Environment="AGENT_CLOUD_NAME=${StudentId}-agents"
+                Environment="AGENT_AMI_ID=${LatestAmiId}"
+                Environment="AGENT_SUBNET_ID=${SubnetId}"
+                Environment="AGENT_SECURITY_GROUP_ID=${AgentSecurityGroup.GroupId}"
+                Environment="AGENT_INSTANCE_PROFILE_ARN=${AgentInstanceProfile.Arn}"
+                # TODO(student): Lab 14.2.2. Skip the setup wizard once JCasC
+                # defines security. Lab 14.1.3: write the log to a file.
+              mode: '000644'
+              owner: root
+              group: root
+            # Pulls jenkins/ from the bucket, installs plugins.txt, copies the
+            # JCasC files and restarts Jenkins. Runs at boot; run it again
+            # with Run Command after you upload changes.
+            /usr/local/sbin/jenkins-apply-config:
+              content: !Sub |
+                #!/bin/bash
+                set -euo pipefail
+                STAGE=/var/lib/jenkins-lab
+                JENKINS_HOME=/var/lib/jenkins
+                mkdir -p "$STAGE" "$JENKINS_HOME/casc_configs" "$JENKINS_HOME/casc_secrets"
+
+                echo "== Syncing s3://${JenkinsBucket}/jenkins/"
+                aws s3 sync --delete --region ${AWS::Region} "s3://${JenkinsBucket}/jenkins/" "$STAGE/"
+
+                echo "== Writing secrets for JCasC"
+                umask 077
+                aws ssm get-parameter --region ${AWS::Region} --with-decryption \
+                  --name /ec2/keypair/${AgentKeyPair.KeyPairId} \
+                  --query Parameter.Value --output text > "$JENKINS_HOME/casc_secrets/agent-ssh-key"
+                printf '%s' "$(aws secretsmanager get-secret-value --region ${AWS::Region} \
+                  --secret-id '${AdminPasswordSecret}' \
+                  --query SecretString --output text)" > "$JENKINS_HOME/casc_secrets/admin-password"
+
+                systemctl stop jenkins || true
+
+                if [ -f "$STAGE/plugins.txt" ]; then
+                  echo "== Installing plugins from plugins.txt"
+                  java -jar /opt/jenkins-plugin-manager/jenkins-plugin-manager.jar \
+                    --war /usr/share/java/jenkins.war \
+                    --plugin-download-directory "$JENKINS_HOME/plugins" \
+                    --plugin-file "$STAGE/plugins.txt"
+                fi
+
+                echo "== Copying JCasC files"
+                rm -f "$JENKINS_HOME"/casc_configs/*.yaml "$JENKINS_HOME"/casc_configs/*.yml
+                if compgen -G "$STAGE/casc/*.y*ml" > /dev/null; then
+                  cp "$STAGE"/casc/*.y*ml "$JENKINS_HOME/casc_configs/"
+                fi
+
+                chown -R jenkins:jenkins "$JENKINS_HOME/casc_configs" "$JENKINS_HOME/casc_secrets"
+                [ -d "$JENKINS_HOME/plugins" ] && chown -R jenkins:jenkins "$JENKINS_HOME/plugins"
+
+                systemctl daemon-reload
+                systemctl start jenkins
+                echo "== Jenkins started"
+              mode: '000750'
+              owner: root
+              group: root
+          commands:
+            01-apply-config:
+              command: /usr/local/sbin/jenkins-apply-config
+          services:
+            systemd:
+              jenkins:
+                enabled: 'true'
+                ensureRunning: 'true'
     Properties:
-      SubnetId: !Ref MySubnet
-      KeyName: !Ref EC2KeyName
-      ImageId: !Ref EC2InstanceAmi
-      InstanceType: !Ref EC2InstanceType
-      SecurityGroupIds:
-        - !Ref MyEC2SecurityGroup
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref ControllerInstanceType
+      IamInstanceProfile: !Ref ControllerInstanceProfile
+      LaunchTemplate:
+        LaunchTemplateId: !Ref ControllerLaunchTemplate
+        Version: !GetAtt ControllerLaunchTemplate.LatestVersionNumber
+      # JENKINS_HOME lives on the root volume. Lesson 14.5 backs it up.
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 30
+            Encrypted: true
+            DeleteOnTermination: true
+      # A public IPv4 address (billed hourly) instead of a NAT gateway. The
+      # security group still allows nothing in.
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          SubnetId: !Ref SubnetId
+          AssociatePublicIpAddress: true
+          GroupSet:
+            - !GetAtt ControllerSecurityGroup.GroupId
       Tags:
-        -
-          Key: user
-          Value: !Ref IAMUserOwnerOfResources
-        -
-          Key: stack
-          Value: !Ref "AWS::StackId"
-  MyNetworkAcl:
-    Type: AWS::EC2::NetworkAcl
-    Properties:
-      VpcId: !Ref MyVpc
-  MyNetworkEntryMySubnetIngressAllTraffic:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref MyNetworkAcl
-      RuleNumber: 100
-      RuleAction: deny
-      Protocol: -1
-      Egress: True
-      CidrBlock: 0.0.0.0/0
-  MyNetworkEntryMySubnetIngressIamOwner:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref MyNetworkAcl
-      RuleNumber: 101
-      RuleAction: allow
-      Protocol: 6
-      CidrBlock: !Join ['/', [!Ref IAMUserOwnerIp, '32' ] ]
-      PortRange:
-        From: 22
-        To: 22
-  MyNetworkEntryMySubnetEgressIamOwner:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref MyNetworkAcl
-      RuleNumber: 101
-      RuleAction: allow
-      Protocol: -1
-      Egress: True
-      CidrBlock: !Join ['/', [!Ref IAMUserOwnerIp, '32' ] ]
-  MyNetworkEntryMySecondSubnetIngressAllTraffic:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref MyNetworkAcl
-      RuleNumber: 200
-      RuleAction: allow
-      Protocol: -1
-      CidrBlock: !Join ['/', ["10.0.0.128", '25' ] ]
-  MyNetworkEntryMySecondSubnetIngressAllSsh:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref MyNetworkAcl
-      RuleNumber: 201
-      RuleAction: allow
-      Protocol: 6
-      CidrBlock: !Join ['/', ["10.0.0.128", '25' ] ]
-      PortRange:
-        From: 22
-        To: 22
-  MyNetworkEntryMySecondSubnetIngressAllPing:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref MyNetworkAcl
-      RuleNumber: 202
-      RuleAction: allow
-      Protocol: 6
-      CidrBlock: !Join ['/', ["10.0.0.128", '25' ] ]
-      Icmp:
-        Code: -1
-        Type: -1
-      PortRange:
-        From:  
-        To:
-  MyNetworkEntryMySecondSubnetIngressAllHttp:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref MyNetworkAcl
-      RuleNumber: 203
-      RuleAction: allow
-      Protocol: 6
-      CidrBlock: !Join ['/', ["10.0.0.128", '25' ] ]
-      PortRange:
-        From: 80
-        To: 80
-  MyNetworkEntryMySecondSubnetEgressAllTraffic:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref MyNetworkAcl
-      RuleNumber: 204
-      RuleAction: allow
-      Egress: True
-      Protocol: -1
-      CidrBlock: !Join ['/', ["10.0.0.128", '25' ] ]
-      PortRange:
-        From:
-        To:   
-  MySecondSubnet:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref MyVpc
-      CidrBlock: !Join ['/', ["10.0.0.128", '25' ] ]
-      Tags:
-        -
-          Key: user
-          Value: !Ref IAMUserOwnerOfResources
-        -
-          Key: stack
-          Value: !Ref "AWS::StackId"
-  MySecondRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref MyVpc
-  SecondSubnetRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref MySecondRouteTable
-      SubnetId: !Ref MySecondSubnet
-  MySecondRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref MySecondRouteTable
-      NatGatewayId: !Ref MyNatGateway
-      DestinationCidrBlock: '0.0.0.0/0'
-  MyNatGatewayInstanceIp:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-  MyNatGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt [ MyNatGatewayInstanceIp, AllocationId ]
-      SubnetId: !Ref MySubnet
-  MySecondEC2Instance:
-    Type: AWS::EC2::Instance
-    Properties:
-      SubnetId: !Ref MySecondSubnet
-      KeyName: !Ref EC2KeyName
-      ImageId: !Ref EC2InstanceAmi
-      SecurityGroupIds:
-        - !Ref MyEC2SecurityGroup
-      Tags:
-        -
-          Key: user
-          Value: !Ref IAMUserOwnerOfResources
-        -
-          Key: stack
-          Value: !Ref "AWS::StackId"
+        - Key: Name
+          Value: !Sub ${StudentId}-jenkins-controller
+        - Key: Student
+          Value: !Ref StudentId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -x
+          # No "-e": if cfn-init fails we still want cfn-signal to report it.
+
+          # AL2023 doesn't guarantee the helper scripts; install them.
+          dnf install -y aws-cfn-bootstrap
+
+          /opt/aws/bin/cfn-init -v \
+            --stack ${AWS::StackName} \
+            --resource ControllerInstance \
+            --configsets Jenkins \
+            --region ${AWS::Region}
+
+          /opt/aws/bin/cfn-signal -e $? \
+            --stack ${AWS::StackName} \
+            --resource ControllerInstance \
+            --region ${AWS::Region}
+
 Outputs:
-  MyVpcOutput:
-    Description: Id of MyVpc
-    Value: !Ref MyVpc
-  MySubnetOutput:
-    Description: Id of MyVpc
-    Value: !Ref MySubnet
-  MyEC2InstanceOutput:
-    Description: Id of MyEC2Instance
-    Value: !Ref MyEC2Instance
-  MyEC2InstancePrivateIpOutput:
-    Description: Private Ip address of MyEC2Instance
-    Value: !GetAtt [MyEC2Instance, PrivateIp]
-  MyEC2InstancePublicIpOutput:
-    Description: Public Ip address of MyEC2Instance
-    Value: !GetAtt [MyEC2Instance, PublicIp]
+  ControllerInstanceId:
+    Description: Target for Session Manager port forwarding.
+    Value: !Ref ControllerInstance
+  PortForwardCommand:
+    Description: Run locally, then browse to http://localhost:8080/.
+    Value: !Sub >-
+      aws ssm start-session --target ${ControllerInstance}
+      --document-name AWS-StartPortForwardingSession
+      --parameters portNumber=8080,localPortNumber=8080
+  JenkinsBucketName:
+    Description: Upload your jenkins/ directory to s3://<bucket>/jenkins/.
+    Value: !Ref JenkinsBucket
+  AgentCloudName:
+    Description: The EC2 cloud name your JCasC must use; the controller's IAM policy is scoped to it.
+    Value: !Sub ${StudentId}-agents
+  AgentSecurityGroupId:
+    Value: !GetAtt AgentSecurityGroup.GroupId
+  AgentRoleName:
+    Value: !Ref AgentRole
+  AdminPasswordSecretArn:
+    Description: aws secretsmanager get-secret-value --secret-id <this>
+    Value: !Ref AdminPasswordSecret

@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Stelligent-U module 15, Lab 15.9.3 starter: an S3 bucket that a Pod reads
+  with EKS Pod Identity. You add the IAM role and the Pod Identity association.
+
+Parameters:
+  Prefix:
+    Type: String
+    Description: Your identifier, used in tags
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{1,30}$"
+  # TODO(student): add parameters for ClusterName (for example
+  #   <your-id>-lab15), Namespace (default lab15) and ServiceAccountName
+  #   (default s3-reader), so the same template works for another cluster.
+
+Resources:
+  # Private by default: Block Public Access on, ACLs disabled, SSE-S3.
+  Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Tags:
+        - Key: owner
+          Value: !Ref Prefix
+        - Key: topic
+          Value: "15"
+
+  # TODO(student): add an AWS::IAM::Role that EKS Pod Identity can assume.
+  #   - Trust policy: the service principal pods.eks.amazonaws.com with the
+  #     actions sts:AssumeRole AND sts:TagSession.
+  #   - Permissions: s3:ListBucket on the bucket and s3:GetObject on its
+  #     objects. Nothing else.
+  #   See https://docs.aws.amazon.com/eks/latest/userguide/pod-id-role.html
+
+  # TODO(student): add an AWS::EKS::PodIdentityAssociation that maps
+  #   the cluster, namespace and service account parameters to the role above.
+  #   See https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-eks-podidentityassociation.html
+
+Outputs:
+  BucketName:
+    Description: Upload a test object here
+    Value: !Ref Bucket
+  # TODO(student): output the role ARN and the association ID.

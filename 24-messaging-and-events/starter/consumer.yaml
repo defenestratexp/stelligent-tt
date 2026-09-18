@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Topic 24 starter: the order-consumer Lambda function, its log group and
+  its execution role. The event source mapping that connects it to your
+  queue is yours to add (see the TODO).
+
+Parameters:
+  Owner:
+    Type: String
+    Description: Your identifier, used in names and tags.
+    AllowedPattern: "[a-z0-9-]+"
+  QueueArn:
+    Type: String
+    Description: ARN of the orders queue from Lesson 24.1.
+  CodeBucket:
+    Type: String
+    Description: S3 bucket holding the zipped handler (starter/consumer/).
+  CodeKey:
+    Type: String
+    Default: order-consumer.zip
+    Description: S3 key of the zipped handler.
+  FunctionTimeout:
+    Type: Number
+    Default: 20
+    MinValue: 3
+    MaxValue: 900
+    Description: >-
+      Function timeout in seconds. Lambda refuses an SQS event source mapping
+      if this is longer than the queue's visibility timeout.
+  WorkSeconds:
+    Type: String
+    Default: "0.2"
+    Description: Pretend work per message, read by the handler (WORK_SECONDS).
+
+Resources:
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Owner}-order-consumer"
+      RetentionInDays: 7
+      Tags:
+        - Key: owner
+          Value: !Ref Owner
+        - Key: topic
+          Value: "24"
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: write-own-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt LogGroup.Arn
+        # The event source mapping polls the queue with the function's
+        # execution role, so these permissions belong here, not on the
+        # queue policy. Compare with the AWSLambdaSQSQueueExecutionRole
+        # managed policy.
+        - PolicyName: consume-orders-queue
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !Ref QueueArn
+      Tags:
+        - Key: owner
+          Value: !Ref Owner
+        - Key: topic
+          Value: "24"
+
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${Owner}-order-consumer"
+      Runtime: python3.13
+      Architectures:
+        - arm64
+      Handler: handler.lambda_handler
+      Role: !GetAtt ExecutionRole.Arn
+      Timeout: !Ref FunctionTimeout
+      MemorySize: 128
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref CodeKey
+      Environment:
+        Variables:
+          WORK_SECONDS: !Ref WorkSeconds
+      LoggingConfig:
+        LogGroup: !Ref LogGroup
+        LogFormat: Text
+      Tags:
+        - Key: owner
+          Value: !Ref Owner
+        - Key: topic
+          Value: "24"
+
+  # TODO(student) Lab 24.2.1: add an AWS::Lambda::EventSourceMapping that
+  # connects QueueArn to Function. Decide on BatchSize and
+  # MaximumBatchingWindowInSeconds, and keep the mapping disabled-able
+  # with a parameter so you can pause consumption without deleting it.
+  #
+  # TODO(student) Lab 24.2.2: turn on partial batch responses
+  # (FunctionResponseTypes).
+  #
+  # TODO(student) Lab 24.2.3: add ScalingConfig and FilterCriteria.
+
+Outputs:
+  FunctionName:
+    Value: !Ref Function
+  FunctionArn:
+    Value: !GetAtt Function.Arn
+  LogGroupName:
+    Value: !Ref LogGroup

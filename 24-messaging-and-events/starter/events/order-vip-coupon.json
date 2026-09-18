@@ -1,0 +1,20 @@
+{
+  "version": "0",
+  "id": "9c4b2e7f-1a6d-4f3e-8b5c-2d7e9f0a1b44",
+  "detail-type": "OrderPlaced",
+  "source": "you.orders",
+  "account": "123456789012",
+  "time": "2026-09-18T14:02:13Z",
+  "region": "us-east-2",
+  "resources": [],
+  "detail": {
+    "orderId": "c7a1e3f5-9b2d-4e6c-8a0f-3b5d7e9c1f03",
+    "sequence": 3,
+    "customerId": "vip-004",
+    "channel": "store",
+    "items": 2,
+    "total": 88.0,
+    "currency": "USD",
+    "coupon": "SAVE10"
+  }
+}

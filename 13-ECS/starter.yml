@@ -1,298 +1,407 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Stelligent-U module 13 starter: the network, load balancer, security groups,
+  IAM roles and log group that the ECS labs build on. It contains no
+  AWS::ECS::* resources and no EC2 capacity; you add those in the labs.
+  By default there is no NAT gateway: tasks and container instances run in the
+  public subnets with public IPv4 addresses. Set EnableNatGateway to true to
+  add ONE NAT gateway, shared by both private subnets (Lesson 13.3).
+
+Parameters:
+  StudentId:
+    Type: String
+    Description: Your identifier, used in names and tags (for example jdoe).
+    AllowedPattern: '^[a-z0-9-]{2,20}$'
+  EnableNatGateway:
+    Type: String
+    Description: >-
+      true adds one NAT gateway (about $0.045 per hour plus its public IPv4
+      address and $0.045 per GB processed). Leave false unless a lab asks.
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+Conditions:
+  CreateNatGateway: !Equals [!Ref EnableNatGateway, 'true']
+
 Resources:
-  MyVpc:
+  # ---------------------------------------------------------------- network
+  Vpc:
     Type: AWS::EC2::VPC
     Properties:
       CidrBlock: 10.0.0.0/16
       EnableDnsHostnames: true
       EnableDnsSupport: true
-      InstanceTenancy: default
-  MyVpcPublicSubnet1Subnet:
-    Type: AWS::EC2::Subnet
-    Properties:
-      CidrBlock: 10.0.0.0/18
-      VpcId:
-        Ref: MyVpc
-      AvailabilityZone:
-        Fn::Select:
-          - 0
-          - Fn::GetAZs: ""
-      MapPublicIpOnLaunch: true
-  MyVpcPublicSubnet1RouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId:
-        Ref: MyVpc
-  MyVpcPublicSubnet1RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId:
-        Ref: MyVpcPublicSubnet1RouteTable
-      SubnetId:
-        Ref: MyVpcPublicSubnet1Subnet
-  MyVpcPublicSubnet1DefaultRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId:
-        Ref: MyVpcPublicSubnet1RouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId:
-        Ref: MyVpcIGW
-    DependsOn:
-      - MyVpcVPCGW
-  MyVpcPublicSubnet1EIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-  MyVpcPublicSubnet1NATGatewayAD3400C1:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId:
-        Fn::GetAtt:
-          - MyVpcPublicSubnet1EIP
-          - AllocationId
-      SubnetId:
-        Ref: MyVpcPublicSubnet1Subnet
-  MyVpcPublicSubnet2Subnet:
-    Type: AWS::EC2::Subnet
-    Properties:
-      CidrBlock: 10.0.64.0/18
-      VpcId:
-        Ref: MyVpc
-      AvailabilityZone:
-        Fn::Select:
-          - 1
-          - Fn::GetAZs: ""
-      MapPublicIpOnLaunch: true
-  MyVpcPublicSubnet2RouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId:
-        Ref: MyVpc
-  MyVpcPublicSubnet2RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId:
-        Ref: MyVpcPublicSubnet2RouteTable
-      SubnetId:
-        Ref: MyVpcPublicSubnet2Subnet
-  MyVpcPublicSubnet2DefaultRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId:
-        Ref: MyVpcPublicSubnet2RouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId:
-        Ref: MyVpcIGW
-    DependsOn:
-      - MyVpcVPCGW
-  MyVpcPublicSubnet2EIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-  MyVpcPublicSubnet2NATGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId:
-        Fn::GetAtt:
-          - MyVpcPublicSubnet2EIP
-          - AllocationId
-      SubnetId:
-        Ref: MyVpcPublicSubnet2Subnet
-  MyVpcPrivateSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      CidrBlock: 10.0.128.0/18
-      VpcId:
-        Ref: MyVpc
-      AvailabilityZone:
-        Fn::Select:
-          - 0
-          - Fn::GetAZs: ""
-      MapPublicIpOnLaunch: false
-  MyVpcPrivateSubnet1RouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId:
-        Ref: MyVpc
-  MyVpcPrivateSubnet1RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId:
-        Ref: MyVpcPrivateSubnet1RouteTable
-      SubnetId:
-        Ref: MyVpcPrivateSubnet1
-  MyVpcPrivateSubnet1DefaultRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId:
-        Ref: MyVpcPrivateSubnet1RouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId:
-        Ref: MyVpcPublicSubnet1NATGatewayAD3400C1
-  MyVpcPrivateSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      CidrBlock: 10.0.192.0/18
-      VpcId:
-        Ref: MyVpc
-      AvailabilityZone:
-        Fn::Select:
-          - 1
-          - Fn::GetAZs: ""
-      MapPublicIpOnLaunch: false
-  MyVpcPrivateSubnet2RouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId:
-        Ref: MyVpc
-  MyVpcPrivateSubnet2RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId:
-        Ref: MyVpcPrivateSubnet2RouteTable
-      SubnetId:
-        Ref: MyVpcPrivateSubnet2
-  MyVpcPrivateSubnet2DefaultRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId:
-        Ref: MyVpcPrivateSubnet2RouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId:
-        Ref: MyVpcPublicSubnet2NATGateway
-  MyVpcIGW:
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-ecs
+        - Key: Student
+          Value: !Ref StudentId
+
+  InternetGateway:
     Type: AWS::EC2::InternetGateway
-  MyVpcVPCGW:
+    Properties:
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
-      VpcId:
-        Ref: MyVpc
-      InternetGatewayId:
-        Ref: MyVpcIGW
-  MyAppLB:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public subnets don't assign public IPs automatically. Fargate tasks ask
+  # for one with assignPublicIp, EC2 instances through their launch template,
+  # so every billed public IPv4 address is a deliberate choice.
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
     Properties:
-      Scheme: internet-facing
-      SecurityGroups:
-        - Fn::GetAtt:
-            - MyAppLBSecurityGroup
-            - GroupId
-      Subnets:
-        - Ref: MyVpcPublicSubnet1Subnet
-        - Ref: MyVpcPublicSubnet2Subnet
-      Type: application
-    DependsOn:
-      - MyVpcPublicSubnet1DefaultRoute
-      - MyVpcPublicSubnet2DefaultRoute
-  MyAppLBSecurityGroup:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.0.0/20
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-ecs-public-1
+        - Key: Student
+          Value: !Ref StudentId
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.16.0/20
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-ecs-public-2
+        - Key: Student
+          Value: !Ref StudentId
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.128.0/20
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-ecs-private-1
+        - Key: Student
+          Value: !Ref StudentId
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.144.0/20
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-ecs-private-2
+        - Key: Student
+          Value: !Ref StudentId
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-ecs-public
+        - Key: Student
+          Value: !Ref StudentId
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  # One route table for both private subnets. Without the NAT gateway it has
+  # no default route, so private subnets reach only the VPC and S3.
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-ecs-private
+        - Key: Student
+          Value: !Ref StudentId
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet2
+
+  # A single NAT gateway in the first Availability Zone. That is a lab
+  # trade-off: production usually runs one per zone so a zone outage doesn't
+  # cut off the other zone's egress (see the module 04 NAT gateway lab).
+  NatGatewayEip:
+    Type: AWS::EC2::EIP
+    Condition: CreateNatGateway
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateNatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEip.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-ecs
+        - Key: Student
+          Value: !Ref StudentId
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Condition: CreateNatGateway
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  # Free. ECR stores image layers in S3, so layer downloads from the private
+  # subnets go through this endpoint instead of being billed per GB by the
+  # NAT gateway.
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Gateway
+      VpcId: !Ref Vpc
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      RouteTableIds:
+        - !Ref PublicRouteTable
+        - !Ref PrivateRouteTable
+
+  # --------------------------------------------------------- load balancer
+  LoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Security Group for ELB ECSMyApp
+      GroupDescription: Public HTTP to the load balancer
+      VpcId: !Ref Vpc
       SecurityGroupIngress:
-        - CidrIp: 0.0.0.0/0
-          Description: Allow from anyone on port 80
-          FromPort: 80
+        - Description: HTTP from anywhere
           IpProtocol: tcp
+          FromPort: 80
           ToPort: 80
-      VpcId:
-        Ref: MyVpc
-  MyAppLBSecurityGroupEgress:
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-ecs-alb
+        - Key: Student
+          Value: !Ref StudentId
+
+  LoadBalancerToServiceEgress:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
-      GroupId:
-        Fn::GetAtt:
-          - MyAppLBSecurityGroup
-          - GroupId
+      GroupId: !Ref LoadBalancerSecurityGroup
+      Description: Load balancer to tasks
       IpProtocol: tcp
-      Description: Load balancer to target
-      DestinationSecurityGroupId:
-        Fn::GetAtt:
-          - MyAppServiceSecurityGroup
-          - GroupId
       FromPort: 80
       ToPort: 80
-  MyAppLBPublicListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
+      DestinationSecurityGroupId: !Ref ServiceSecurityGroup
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: PublicDefaultRoute
     Properties:
-      DefaultActions:
-        - TargetGroupArn:
-            Ref: MyAppLBPublicListenerECSGroup
-          Type: forward
-      LoadBalancerArn:
-        Ref: MyAppLB
-      Port: 80
-      Protocol: HTTP
-  MyAppLBPublicListenerECSGroup:
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  # Target type ip: tasks in awsvpc network mode register by their own IP
+  # address, on EC2 capacity and on Fargate alike.
+  TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
+      VpcId: !Ref Vpc
+      TargetType: ip
+      Protocol: HTTP
+      Port: 80
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 10
+      HealthyThresholdCount: 2
+      TargetGroupAttributes:
+        # Lab setting: shorter draining makes deployments and cleanup faster.
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
-      TargetType: ip
-      VpcId:
-        Ref: MyVpc
-  MyAppTaskDefTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-          - Action: sts:AssumeRole
-            Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-        Version: "2012-10-17"
-  MyAppTaskDefwebLogGroup:
-    Type: AWS::Logs::LogGroup
-    UpdateReplacePolicy: Retain
-    DeletionPolicy: Retain
-  MyAppTaskDefExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-          - Action: sts:AssumeRole
-            Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-        Version: "2012-10-17"
-  MyAppTaskDefExecutionRoleDefaultPolicy:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyDocument:
-        Statement:
-          - Action:
-              - logs:CreateLogStream
-              - logs:PutLogEvents
-            Effect: Allow
-            Resource:
-              Fn::GetAtt:
-                - MyAppTaskDefwebLogGroup
-                - Arn
-        Version: "2012-10-17"
-      PolicyName: MyAppTaskDefExecutionRoleDefaultPolicy
-      Roles:
-        - Ref: MyAppTaskDefExecutionRole
-  MyAppServiceSecurityGroup:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # ------------------------------------------------------- task networking
+  # Attach this to your services' tasks (awsvpc network mode). No SSH: use
+  # ECS Exec (Lesson 13.3).
+  ServiceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: ECS/MyApp/Service/SecurityGroup
+      GroupDescription: ECS tasks. Ingress only from the load balancer.
+      VpcId: !Ref Vpc
       SecurityGroupEgress:
-        - CidrIp: 0.0.0.0/0
-          Description: Allow all outbound traffic by default
-          IpProtocol: "-1"
-      VpcId:
-        Ref: MyVpc
-  MyAppServiceSecurityGroupIngress:
+        - Description: HTTPS out for ECR, CloudWatch Logs and ECS Exec
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      # TODO(student): Lesson 13.4 needs task-to-task traffic between
+      # services that share this group. Add the ingress and egress rules it
+      # needs, referencing this group rather than a CIDR.
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-ecs-tasks
+        - Key: Student
+          Value: !Ref StudentId
+
+  ServiceIngressFromLoadBalancer:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
+      GroupId: !Ref ServiceSecurityGroup
+      Description: Load balancer to tasks
       IpProtocol: tcp
-      Description: Load balancer to target
       FromPort: 80
-      GroupId:
-        Fn::GetAtt:
-          - MyAppServiceSecurityGroup
-          - GroupId
-      SourceSecurityGroupId:
-        Fn::GetAtt:
-          - MyAppLBSecurityGroup
-          - GroupId
       ToPort: 80
+      SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+
+  # ------------------------------------------------------------------- IAM
+  # Used by the ECS agent (or Fargate) to pull images from ECR and write the
+  # container logs. Your application never sees these credentials.
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  # The role your containers' code (and ECS Exec) run as. It starts with no
+  # permissions.
+  # TODO(student): Lab 13.3.4 adds the permissions ECS Exec needs.
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  # --------------------------------------------------------------- logging
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /ecs/${StudentId}
+      RetentionInDays: 7
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+    Export:
+      Name: !Sub ${AWS::StackName}-VpcId
+  PublicSubnetIds:
+    Value: !Join [',', [!Ref PublicSubnet1, !Ref PublicSubnet2]]
+    Export:
+      Name: !Sub ${AWS::StackName}-PublicSubnetIds
+  PrivateSubnetIds:
+    Value: !Join [',', [!Ref PrivateSubnet1, !Ref PrivateSubnet2]]
+    Export:
+      Name: !Sub ${AWS::StackName}-PrivateSubnetIds
+  LoadBalancerUrl:
+    Value: !Sub http://${LoadBalancer.DNSName}
+  TargetGroupArn:
+    Value: !Ref TargetGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-TargetGroupArn
+  ServiceSecurityGroupId:
+    Value: !Ref ServiceSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-ServiceSecurityGroupId
+  TaskExecutionRoleArn:
+    Value: !GetAtt TaskExecutionRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-TaskExecutionRoleArn
+  TaskRoleArn:
+    Value: !GetAtt TaskRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-TaskRoleArn
+  TaskRoleName:
+    Value: !Ref TaskRole
+    Export:
+      Name: !Sub ${AWS::StackName}-TaskRoleName
+  LogGroupName:
+    Value: !Ref LogGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-LogGroupName
