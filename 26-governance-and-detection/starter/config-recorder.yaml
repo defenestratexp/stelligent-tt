@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Topic 26 starter: the S3 bucket AWS Config delivers configuration history
+  and snapshots to, with the bucket policy Config needs. The configuration
+  recorder and delivery channel are yours to add (see the TODOs).
+
+Parameters:
+  Owner:
+    Type: String
+    Description: Your identifier, used in names and tags.
+    AllowedPattern: "[a-z0-9-]+"
+  HistoryRetentionDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    Description: Days to keep Config history and snapshot files in the bucket.
+
+Resources:
+  ConfigBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub "${Owner}-config-${AWS::AccountId}-${AWS::Region}"
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireConfigHistory
+            Status: Enabled
+            ExpirationInDays: !Ref HistoryRetentionDays
+      Tags:
+        - Key: owner
+          Value: !Ref Owner
+        - Key: topic
+          Value: "26"
+
+  # Adapted from "Permissions for the Amazon S3 Bucket for the AWS Config
+  # Delivery Channel" in the AWS Config Developer Guide. With the
+  # service-linked role, Config writes as the config.amazonaws.com service
+  # principal, so the policy names that principal and pins it to this
+  # account with aws:SourceAccount.
+  ConfigBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ConfigBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSConfigBucketPermissionsCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt ConfigBucket.Arn
+            Condition:
+              StringEquals:
+                "aws:SourceAccount": !Ref AWS::AccountId
+          - Sid: AWSConfigBucketExistenceCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:ListBucket
+            Resource: !GetAtt ConfigBucket.Arn
+            Condition:
+              StringEquals:
+                "aws:SourceAccount": !Ref AWS::AccountId
+          - Sid: AWSConfigBucketDelivery
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${ConfigBucket.Arn}/AWSLogs/${AWS::AccountId}/Config/*"
+            Condition:
+              StringEquals:
+                "s3:x-amz-acl": bucket-owner-full-control
+                "aws:SourceAccount": !Ref AWS::AccountId
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt ConfigBucket.Arn
+              - !Sub "${ConfigBucket.Arn}/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  # TODO(student): add an AWS::Config::ConfigurationRecorder.
+  #   - RoleARN: the AWS Config service-linked role, AWSServiceRoleForConfig.
+  #     Build its ARN with !Sub, AWS::Partition and AWS::AccountId; don't
+  #     hard-code an account ID. Create the role once with
+  #     `aws iam create-service-linked-role` if it doesn't exist yet.
+  #   - RecordingGroup: record only the resource types Lesson 26.2 uses,
+  #     not everything, and no global (IAM) resource types.
+  #   - RecordingMode: a default recording frequency plus at least one
+  #     per-resource-type override (Lab 26.2.1 explains which).
+
+  # TODO(student): add an AWS::Config::DeliveryChannel that delivers to
+  # ConfigBucket, with a snapshot delivery frequency you can justify.
+  # Think about ordering: the recorder starts once the delivery channel
+  # exists, and the bucket policy must be in place before Config checks it.
+
+Outputs:
+  ConfigBucketName:
+    Description: The bucket AWS Config delivers to.
+    Value: !Ref ConfigBucket
