@@ -1,0 +1,42 @@
+// Declarative Pipeline starter for Lab 14.4.1. Every TODO is yours to finish;
+// see https://www.jenkins.io/doc/book/pipeline/syntax/.
+pipeline {
+    // Runs on an ephemeral EC2 agent from the cloud you defined in JCasC.
+    agent { label 'al2023' }
+
+    options {
+        timeout(time: 20, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    // TODO(student): a "tools" block naming the Maven installation from JCasC.
+
+    // TODO(student): Task "Build parameters". A string, a choice and a
+    // boolean parameter, used in a stage of their own.
+
+    stages {
+        stage('Build and test') {
+            steps {
+                // The repository root is the course repo; the project is in
+                // a subdirectory. Adjust the path for your repository.
+                dir('14-Jenkins/my-app') {
+                    sh 'mvn -B clean verify'
+                }
+            }
+        }
+        // TODO(student): Lab 14.4.3. A stage that calls AWS with the agent's
+        // instance role (no credentials in Jenkins).
+    }
+
+    post {
+        always {
+            // TODO(student): publish the JUnit results from surefire.
+            echo 'Build finished'
+        }
+        success {
+            // TODO(student): Task "Artifact storage". archiveArtifacts the
+            // jar; with Artifact Manager on S3 it lands in your bucket.
+            echo 'Archive the jar here'
+        }
+    }
+}
