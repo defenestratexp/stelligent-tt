@@ -116,7 +116,6 @@ resources. Later lessons use tools that delete *everything* in an account. You
 want all of that in an account that holds nothing else. The course creates
 this account under AWS Organizations in
 [module 19](../19-multi-account/README.md), early in Phase 1.
-<!-- VERIFY: module 19 directory name (../19-multi-account) once it exists -->
 Until then, the bootstrap below gets you working safely on day one.
 
 **Lab region: `us-east-2` (Ohio).** You set it once, in your AWS CLI profile.
@@ -205,7 +204,9 @@ user*? What does a *permission set* become in the account it's assigned to?
      and enter Identity Center's home region as the SSO region.
    - Pick your account and permission set.
    - Set the **default client region to `us-east-2`**, output `json`, and give
-     the profile a short name (for example `lab`).
+     the profile the name `mgmt`: at this point it signs you in to the
+     management account. Module 19 adds a separate `lab` profile for the
+     lab account, and the labs from then on run there.
 
 1. Open `~/.aws/config` and read what the wizard wrote. Note that there is an
    `[sso-session ...]` section and a `[profile ...]` section, and that
@@ -213,7 +214,7 @@ user*? What does a *permission set* become in the account it's assigned to?
    placeholders; yours has your own values:
 
    ```ini
-   [profile lab]
+   [profile mgmt]
    sso_session = stelligent-u
    sso_account_id = 123456789012
    sso_role_name = AdministratorAccess
@@ -227,7 +228,7 @@ user*? What does a *permission set* become in the account it's assigned to?
    ```
 
 1. Make the profile your default for this shell with
-   `export AWS_PROFILE=lab`, sign in with `aws sso login`, and then run a
+   `export AWS_PROFILE=mgmt`, sign in with `aws sso login`, and then run a
    few commands to confirm access:
 
    - [get-caller-identity](https://docs.aws.amazon.com/cli/latest/reference/sts/get-caller-identity.html)
