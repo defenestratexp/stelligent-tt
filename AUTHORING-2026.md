@@ -78,6 +78,12 @@ Use these; do not reintroduce the old behaviour.
   never a personal access token.
 - **Renamed services:** Amazon Data Firehose, Infrastructure Composer, Amazon Q Developer in
   chat applications, SageMaker AI, Fault Injection Service.
+- **Security services:** the unified AWS Security Hub (GA December 2025) is separate from the
+  original product, now called Security Hub CSPM. Free trials: GuardDuty, Security Hub and
+  Security Hub CSPM 30 days; Inspector 15 days. CloudTrail Lake is closed to new customers
+  (2026-05-31) and Inspector Classic is end of support.
+- **Placeholders:** `123456789012` for a single account; in multi-account labs follow module 19
+  (`444455556666` management, `111122223333` lab, `o-exampleorgid`).
 - **Retired — do not use:** Cloud9, CodeStar, OpsWorks, CodeCatalyst (maintenance), CodeGuru
   Security, App Mesh, Proton, App Runner (closed to new customers), CloudWatch Evidently,
   Elastic Inference, EC2-Classic, QLDB.
