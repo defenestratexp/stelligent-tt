@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Topic 23 starter: two Amazon Linux 2023 clients in different Availability
+  Zones, reachable only through Session Manager, with the EFS mount helper
+  installed. The Amazon EFS resources are yours to add (see the TODOs).
+
+Parameters:
+  Owner:
+    Type: String
+    Description: Your identifier, used in names and tags.
+    AllowedPattern: "[a-z0-9-]+"
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The VPC for the lab (the default VPC is fine).
+  SubnetA:
+    Type: AWS::EC2::Subnet::Id
+    Description: A subnet in one Availability Zone. It needs a route to the internet or VPC endpoints for Session Manager.
+  SubnetB:
+    Type: AWS::EC2::Subnet::Id
+    Description: A subnet in a different Availability Zone from SubnetA.
+  ClientImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Description: Amazon Linux 2023 (arm64) AMI, looked up from the SSM public parameter.
+  ClientInstanceType:
+    Type: String
+    Default: t4g.micro
+    AllowedValues:
+      - t4g.micro
+      - t4g.small
+    Description: Graviton instance type for the clients (must match the arm64 AMI).
+
+Resources:
+  # The role gives Session Manager what it needs. It grants nothing on EFS:
+  # deciding who may mount the file system is part of Lab 23.1.3.
+  ClientRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: owner
+          Value: !Ref Owner
+
+  ClientInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref ClientRole
+
+  # No inbound rules: Session Manager connects outbound from the instance.
+  ClientSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub EFS clients for ${Owner} (no inbound access)
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-efs-clients
+        - Key: owner
+          Value: !Ref Owner
+
+  ClientLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref ClientImageId
+        InstanceType: !Ref ClientInstanceType
+        IamInstanceProfile:
+          Arn: !GetAtt ClientInstanceProfile.Arn
+        SecurityGroupIds:
+          - !Ref ClientSecurityGroup
+        MetadataOptions:
+          HttpTokens: required
+          HttpEndpoint: enabled
+        TagSpecifications:
+          - ResourceType: volume
+            Tags:
+              - Key: owner
+                Value: !Ref Owner
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            set -euo pipefail
+            dnf install -y amazon-efs-utils
+            mkdir -p /mnt/efs
+
+  ClientA:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref ClientLaunchTemplate
+        Version: !GetAtt ClientLaunchTemplate.LatestVersionNumber
+      SubnetId: !Ref SubnetA
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-efs-client-a
+        - Key: owner
+          Value: !Ref Owner
+
+  ClientB:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref ClientLaunchTemplate
+        Version: !GetAtt ClientLaunchTemplate.LatestVersionNumber
+      SubnetId: !Ref SubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-efs-client-b
+        - Key: owner
+          Value: !Ref Owner
+
+  # TODO(student, Lab 23.1.1): a security group for the mount targets that
+  #   allows NFS (TCP 2049) from ClientSecurityGroup only.
+  # TODO(student, Lab 23.1.1): an encrypted, Regional AWS::EFS::FileSystem
+  #   with Elastic throughput, automatic backups turned off, and tags.
+  # TODO(student, Lab 23.1.1): one AWS::EFS::MountTarget in SubnetA and one
+  #   in SubnetB.
+  # TODO(student, Lab 23.1.3): an AWS::EFS::AccessPoint and a
+  #   FileSystemPolicy on the file system.
+
+Outputs:
+  ClientAId:
+    Description: Instance ID of the client in SubnetA.
+    Value: !Ref ClientA
+  ClientBId:
+    Description: Instance ID of the client in SubnetB.
+    Value: !Ref ClientB
+  ClientRoleArn:
+    Description: ARN of the clients' IAM role (you need it for the file system policy).
+    Value: !GetAtt ClientRole.Arn
+  ClientSecurityGroupId:
+    Description: Security group of the clients.
+    Value: !Ref ClientSecurityGroup
