@@ -9,7 +9,7 @@ How every module in the 2026 edition is written. Read with [UPDATE-PLAN-2026.md]
   Retrospective**, then **Further Reading**.
 - Labs tell the student *what* to build and *why*, and point at the official docs. They do not
   hand over finished templates. Starter files are fine where the old module had them.
-- Questions are answered inline by the student with `> ` quotes (see [WORKFLOW.md](WORKFLOW.md)).
+- Questions are answered inline by the student as Markdown quotes (lines starting with `>`) (see [WORKFLOW.md](WORKFLOW.md)).
 - CloudFormation is YAML. The CLI is preferred over the console; say so when a step genuinely
   needs the console (e.g. a one-time CodeConnections handshake).
 - Keep what already works. Rewrite what is broken or misleading. Don't pad.
