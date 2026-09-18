@@ -138,6 +138,9 @@ authorized to in the labs account. These tokens will last approximately
 1. Try to reduce the amount of manual input as much as possible.
 
 1. TT - n9n-autologin.sh in the scripts directory accomplishes these tasks. Just call the script with the latest MFA
+   code. It finds the MFA device from `AWS_MFA_SERIAL`, else `mfa_serial` in the source profile
+   (`AWS_SOURCE_PROFILE`, default `n9n`) in `~/.aws/config`, else by asking IAM, so no account
+   ID is kept in the script.
 
 ##### Question 0.1.1: 1
 
