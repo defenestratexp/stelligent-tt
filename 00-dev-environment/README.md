@@ -183,7 +183,7 @@ You want to set an alias in your .bashrc or .zshrc to something like this:
 
 #### Lab 0.1.2: GitHub
 
-1. Create a new repository from the [Stelligent-U repository template](https://github.com/stelligent/stelligent-u/generate)
+1. Create a new repository from the [Stelligent-U repository template](https://github.com/defenestratexp/stelligent-tt/generate)
 1. Select the owner of the repository
 1. Name the new private repository
 1. Generate ssh keys and

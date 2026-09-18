@@ -86,7 +86,7 @@ and its minimal set of requisite resources:
     - Create a [GitHub personal access token](https://github.com/settings/tokens)
     - Poll the repository for changes to the master branch
   - a 'Deploy' stage with an action that executes
-    [this CFN template](https://github.com/stelligent/stelligent-u/blob/master/12-codepipeline/bucket.yaml)
+    [this CFN template](https://github.com/defenestratexp/stelligent-tt/blob/master/12-codepipeline/bucket.yaml)
     and creates an S3 bucket
 
 Deploy the Pipeline stack via the AWS CLI; its creation should

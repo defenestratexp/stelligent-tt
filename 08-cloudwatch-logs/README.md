@@ -63,7 +63,7 @@ they exist.
 The CloudWatch agent is the standard tool for sending log data to
 CloudWatch Logs. We've provided a stack template for you in your *clone*
 of the
-[stelligent-u](https://github.com/stelligent/stelligent-u)
+[stelligent-tt](https://github.com/defenestratexp/stelligent-tt)
 repo:
 
 - [Documentation](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/install-CloudWatch-Agent-on-first-instance.html)
