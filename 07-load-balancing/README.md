@@ -46,7 +46,7 @@ instances. In this lab, we'll take an ASG with instances that serve a
 specific web page on port 80 with HTTP and balance traffic across the
 many instances with an ALB.
 
-- Working from the [ASG Template](https://github.com/stelligent/stelligent-u/blob/master/07-load-balancing/asg_example.yaml),
+- Working from the [ASG Template](https://github.com/defenestratexp/stelligent-tt/blob/master/07-load-balancing/asg_example.yaml),
   associate a [target group](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticloadbalancingv2-targetgroup.html)
   with the autoscaling group, giving it a health check on `/index.html`.
 - Use  Amazon Linux 2 AMI.

@@ -1,25 +1,44 @@
 ---
-name: master
+name: lint
 on:
   pull_request:
     branches:
       - master
+      - main
 
 jobs:
-  linting:
+  markdown:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Set Up ruby 2.7
-        uses: actions/setup-ruby@v1
-        with:
-          ruby-version: "2.7"
+      - name: Checkout the code
+        uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Install markdownlint (mdl)
         run: gem install mdl
 
-      - name: Checkout the code
-        uses: actions/checkout@v1
+      - name: Lint Markdown
+        run: mdl "$GITHUB_WORKSPACE"
 
-      - name: Lint
-        run: mdl $GITHUB_WORKSPACE
+  cloudformation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cfn-lint
+        run: pip install cfn-lint
+
+      # Lints every CloudFormation template the course ships. Deliberately
+      # incomplete starter templates are listed in .cfnlintrc as ignored.
+      - name: Lint CloudFormation templates
+        run: cfn-lint
