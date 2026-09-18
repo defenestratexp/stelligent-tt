@@ -1,0 +1,48 @@
+# Lab 15.8.3: a small, capped NodePool for EKS Auto Mode.
+#
+# Auto Mode's built-in general-purpose NodePool can launch any C, M or R
+# instance of generation 5 or newer. This NodePool is preferred over it
+# (higher weight), allows only 2-vCPU on-demand amd64 instances, and stops
+# launching once its nodes add up to 4 vCPUs or 16 GiB.
+#
+#   kubectl apply -f nodepool-lab.yaml
+#   kubectl get nodepools,nodeclaims
+#
+# Read the Lab 15.8.3 questions before you rely on it as a cost cap.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: lab15-small
+spec:
+  # Pools with a higher weight are tried first. The built-in pools have none.
+  weight: 50
+  template:
+    metadata:
+      labels:
+        stelligent-u/pool: lab15-small
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: default
+      requirements:
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["c", "m", "t"]
+        - key: eks.amazonaws.com/instance-cpu
+          operator: In
+          values: ["2"]
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+      # Replace nodes after a day instead of the 14-day default.
+      expireAfter: 24h
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m
+  limits:
+    cpu: "4"
+    memory: 16Gi

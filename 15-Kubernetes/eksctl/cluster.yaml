@@ -1,15 +1,58 @@
+# eksctl ClusterConfig for module 15: an EKS Auto Mode cluster.
+#
+#   eksctl create cluster -f cluster.yaml      (about 15-20 minutes)
+#
+# Before you run it:
+#   - Replace <your-id> in metadata.name and metadata.tags.
+#   - Check the version is still in STANDARD support:
+#       aws eks describe-cluster-versions \
+#         --query "clusterVersions[].[clusterVersion,status,endOfStandardSupportDate]"
+#     Pick the newest version whose status is STANDARD_SUPPORT.
+#
+# Cost while it exists: control plane $0.10/hour, one NAT gateway, and the EC2
+# instances Auto Mode launches for your Pods plus the Auto Mode management fee.
+# Delete it with `eksctl delete cluster -f cluster.yaml` after removing every
+# LoadBalancer Service and Ingress (see Lesson 15.10).
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
 metadata:
-  name: stelligent-u-cluster
-  region: us-east-1
-  # availabilityZones: ["us-east-1a", "us-east-1b"]
+  name: <your-id>-lab15
+  # The lab region. eksctl reads the region from here, not from your profile.
+  region: us-east-2
+  # Pin the version. If you leave it out, eksctl picks its own default, which
+  # can be older than the newest standard-support version.
+  version: "1.36"
+  tags:
+    owner: <your-id>
+    topic: "15"
 
-managedNodeGroups:
-  - name: ng-1
-    instanceType: t3.small
-    desiredCapacity: 2
-  - name: ng-2
-    instanceType: t3.small
-    desiredCapacity: 2
+# STANDARD: when standard support ends, EKS upgrades the control plane instead
+# of moving it to extended support, which costs $0.60/hour instead of $0.10.
+upgradePolicy:
+  supportType: STANDARD
+
+# Access entries only; there is no aws-auth ConfigMap. Auto Mode requires
+# access entries. The IAM principal that runs eksctl gets a cluster-admin
+# access entry.
+accessConfig:
+  authenticationMode: API
+  bootstrapClusterCreatorAdminPermissions: true
+
+# EKS Auto Mode: EKS runs compute (Karpenter), networking, load balancing,
+# block storage, CoreDNS and the Pod Identity agent for you. eksctl creates the
+# cluster role and node role. Leaving nodePools out gives you the built-in
+# "general-purpose" and "system" NodePools.
+autoModeConfig:
+  enabled: true
+
+vpc:
+  # One NAT gateway for the whole VPC (the eksctl default, stated here so you
+  # see the cost). HighlyAvailable puts one in every AZ and multiplies the bill.
+  nat:
+    gateway: Single
+  clusterEndpoints:
+    publicAccess: true
+    privateAccess: true
+  # Optional: limit the public API endpoint to your own address.
+  # publicAccessCIDRs: ["203.0.113.10/32"]
