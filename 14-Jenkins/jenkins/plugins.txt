@@ -1,0 +1,14 @@
+# Plugins for the module 14 controller, one "id:version" per line.
+# Versions were current in September 2026 for Jenkins LTS 2.568.x. Pin every
+# plugin you add; check https://plugins.jenkins.io/<id>/releases/ for the
+# current version and https://www.jenkins.io/security/advisories/ before you
+# bump anything. jenkins-apply-config installs this file with the Jenkins
+# plugin installation manager tool (Lab 14.2.1).
+configuration-as-code:2121.v86fe99d4b_b_a_b_
+ec2:2064.v79de4fd2d03b_
+workflow-aggregator:608.v67378e9d3db_1
+git:5.10.1
+# TODO(student): Lab 14.2.3, matrix-based security.
+# TODO(student): Lab 14.4.2, Artifact Manager on S3.
+# TODO(student): anything else your labs need (for example a pipeline
+# visualization plugin). Add only what you use.

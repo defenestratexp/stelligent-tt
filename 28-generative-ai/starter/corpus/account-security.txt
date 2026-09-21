@@ -1,0 +1,24 @@
+Trailhead Outfitters - Your Account and Security
+(Fictional company. Training material for Stelligent-U Topic 28.)
+
+Password resets
+Reset links expire after 30 minutes. If the reset email does not arrive,
+check spam and make sure the address on file is correct. Support staff can
+never see or set your password.
+
+Two-step verification
+Turn it on under Account > Security. We support authenticator apps and
+passkeys. SMS codes are no longer offered for new enrolments.
+
+Suspicious orders
+If an order you did not place appears on your account, reset your password
+immediately and contact support. We cancel unshipped orders and investigate
+shipped ones.
+
+Deleting your account
+Request deletion under Account > Privacy. We delete personal data within 30
+days, except records we must keep by law, such as invoices.
+
+What we will never ask for
+Support will never ask for your password, your full card number or a
+one-time code by email, chat or phone.

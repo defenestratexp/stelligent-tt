@@ -1,0 +1,225 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Topic 22 starter (starter/network.yaml): a VPC with three private subnets and no internet access,
+  a small client instance reachable only through an EC2 Instance Connect
+  Endpoint, and a security group for the databases. Deploy it once and keep
+  it for the whole module; delete it last.
+
+Parameters:
+  Owner:
+    Type: String
+    Description: Your identifier, used in names and tags.
+    AllowedPattern: "[a-z0-9-]+"
+  VpcCidr:
+    Type: String
+    Default: 10.22.0.0/16
+    Description: CIDR block for the lab VPC.
+  ClientImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Description: Amazon Linux 2023 (arm64) AMI, looked up from the SSM public parameter.
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-db-lab
+        - Key: owner
+          Value: !Ref Owner
+
+  # Three private subnets, one per Availability Zone. There is no internet
+  # gateway and no NAT gateway: nothing in this VPC can reach the internet,
+  # and nothing on the internet can reach it.
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Select [0, !Cidr [!Ref VpcCidr, 3, 8]]
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-db-private-a
+        - Key: owner
+          Value: !Ref Owner
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Select [1, !Cidr [!Ref VpcCidr, 3, 8]]
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-db-private-b
+        - Key: owner
+          Value: !Ref Owner
+
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Select [2, !Cidr [!Ref VpcCidr, 3, 8]]
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-db-private-c
+        - Key: owner
+          Value: !Ref Owner
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-db-private
+        - Key: owner
+          Value: !Ref Owner
+
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetC
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Security groups. The ingress rules are separate resources so the groups
+  # can reference each other without a circular dependency. Outbound traffic
+  # keeps the default allow-all rule: with no internet or NAT gateway, the
+  # only places it can go are inside this VPC.
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EC2 Instance Connect Endpoint
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-db-eice
+        - Key: owner
+          Value: !Ref Owner
+
+  ClientSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Database client instance
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-db-client
+        - Key: owner
+          Value: !Ref Owner
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL databases in this lab
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-db-postgres
+        - Key: owner
+          Value: !Ref Owner
+
+  ClientFromEndpointSsh:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ClientSecurityGroup
+      Description: SSH from the EC2 Instance Connect Endpoint only
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId: !Ref EndpointSecurityGroup
+
+  DatabaseFromClient:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      Description: PostgreSQL from the client instance
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref ClientSecurityGroup
+
+  # TODO(student, Lab 22.3.4): RDS Proxy needs its own security group that
+  # allows PostgreSQL in from the client, and the database security group
+  # needs an ingress rule from the proxy's security group.
+
+  InstanceConnectEndpoint:
+    Type: AWS::EC2::InstanceConnectEndpoint
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PreserveClientIp: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-db-eice
+        - Key: owner
+          Value: !Ref Owner
+
+  ClientLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        MetadataOptions:
+          HttpTokens: required
+          HttpEndpoint: enabled
+
+  # A tiny instance that exists only as an SSH hop into the VPC. You run
+  # psql on your own machine through a port forward; nothing is installed
+  # here, which is why the VPC needs no internet access.
+  ClientInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ClientImageId
+      InstanceType: t4g.nano
+      SubnetId: !Ref PrivateSubnetA
+      SecurityGroupIds:
+        - !Ref ClientSecurityGroup
+      LaunchTemplate:
+        LaunchTemplateId: !Ref ClientLaunchTemplate
+        Version: !GetAtt ClientLaunchTemplate.LatestVersionNumber
+      Tags:
+        - Key: Name
+          Value: !Sub ${Owner}-db-client
+        - Key: owner
+          Value: !Ref Owner
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+    Export:
+      Name: !Sub ${AWS::StackName}-VpcId
+  PrivateSubnetIds:
+    Description: Comma-separated private subnet IDs, one per Availability Zone.
+    Value: !Join [",", [!Ref PrivateSubnetA, !Ref PrivateSubnetB, !Ref PrivateSubnetC]]
+    Export:
+      Name: !Sub ${AWS::StackName}-PrivateSubnetIds
+  DatabaseSecurityGroupId:
+    Value: !Ref DatabaseSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-DatabaseSecurityGroupId
+  ClientSecurityGroupId:
+    Value: !Ref ClientSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-ClientSecurityGroupId
+  ClientInstanceId:
+    Value: !Ref ClientInstance
+  InstanceConnectEndpointId:
+    Value: !Ref InstanceConnectEndpoint

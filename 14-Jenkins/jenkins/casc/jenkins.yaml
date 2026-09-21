@@ -1,0 +1,72 @@
+# Jenkins Configuration as Code (JCasC) starter for module 14.
+#
+# jenkins-apply-config copies this file to /var/lib/jenkins/casc_configs,
+# which CASC_JENKINS_CONFIG points at. ${NAME} is read from the environment
+# set in the systemd drop-in that base.yaml writes; ${readFile:...} reads a
+# file that jenkins-apply-config fetched from Parameter Store or Secrets
+# Manager at boot. Nothing in this file is secret, so it can live in Git.
+#
+# Check key names against the running controller: Manage Jenkins >
+# Configuration as Code > "View Configuration" and "Documentation".
+
+jenkins:
+  systemMessage: "Stelligent-U module 14. Configured as code; changes made in the UI are lost on the next apply."
+  # Builds never run on the controller.
+  numExecutors: 0
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: "${readFile:/var/lib/jenkins/casc_secrets/admin-password}"
+  # TODO(student): Lab 14.2.3. Replace this with globalMatrix (matrix-auth
+  # plugin) and add a read-only user.
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  # TODO(student): Lab 14.3.1. Complete the EC2 cloud. The name must be
+  # ${AGENT_CLOUD_NAME}: the controller's IAM policy only lets it launch and
+  # terminate instances tagged with that cloud name.
+  clouds:
+    - amazonEC2:
+        name: "${AGENT_CLOUD_NAME}"
+        region: "${AWS_REGION}"
+        useInstanceProfileForCredentials: true
+        sshKeysCredentialsId: agent-ssh-key
+        templates:
+          - description: al2023-x86_64
+            ami: "${AGENT_AMI_ID}"
+            type: t3.small
+            labelString: al2023
+            subnetId: "${AGENT_SUBNET_ID}"
+            securityGroups: "${AGENT_SECURITY_GROUP_ID}"
+            iamInstanceProfile: "${AGENT_INSTANCE_PROFILE_ARN}"
+            remoteFS: /home/ec2-user
+            remoteAdmin: ec2-user
+            # TODO(student): connection strategy, public IP assignment, host
+            # key verification, IMDSv2, init script (Java 21 and Git), idle
+            # termination, instance cap and maximum uses per agent.
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - basicSSHUserPrivateKey:
+              scope: SYSTEM
+              id: agent-ssh-key
+              username: ec2-user
+              description: Key pair created by base.yaml for EC2 agents
+              privateKeySource:
+                directEntry:
+                  privateKey: "${readFile:/var/lib/jenkins/casc_secrets/agent-ssh-key}"
+
+# TODO(student): Lab 14.3.3. A Maven installation under "tool:" that
+# installs automatically on agents.
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+  # TODO(student): Lab 14.4.2. Artifact Manager on S3 (bucket
+  # ${JENKINS_BUCKET}, prefix artifacts/). Lab 14.4.4: a global shared
+  # library.

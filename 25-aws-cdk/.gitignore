@@ -1,0 +1,6 @@
+# CDK build output and local environments. Commit cdk.context.json.
+cdk.out/
+.venv/
+*.egg-info/
+__pycache__/
+.pytest_cache/

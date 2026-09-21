@@ -1,0 +1,15 @@
+{
+  "version": "0",
+  "id": "2e8d6c4a-0f1b-4d3e-9a7c-5b1f3d5e7a55",
+  "detail-type": "OrderCancelled",
+  "source": "you.orders",
+  "account": "123456789012",
+  "time": "2026-09-18T14:09:40Z",
+  "region": "us-east-2",
+  "resources": [],
+  "detail": {
+    "orderId": "0b8c1c5e-0d0b-4a55-9d4e-7c1f3c2a9e01",
+    "customerId": "c-017",
+    "reason": "customer-request"
+  }
+}

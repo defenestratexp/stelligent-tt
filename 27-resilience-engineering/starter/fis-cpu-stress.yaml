@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Stelligent-U module 27 starter: an AWS FIS experiment role and one worked
+  experiment template that runs CPU stress, through Systems Manager, on ONE
+  running web server of the target workload. The experiment cannot be created
+  without a stop condition: StopConditionAlarmArn has no default.
+
+Parameters:
+  StudentId:
+    Type: String
+    Description: Your identifier, used in names and tags (for example jdoe).
+    AllowedPattern: '^[a-z0-9-]{2,20}$'
+  TargetTagValue:
+    Type: String
+    Description: >-
+      Value of the fis-target tag that marks instances as eligible FIS
+      targets (Lab 27.2.1 adds the tag to the launch template). Usually your
+      identifier.
+    AllowedPattern: '^[a-z0-9-]{2,20}$'
+  StopConditionAlarmArn:
+    Type: String
+    Description: >-
+      ARN of the CloudWatch alarm that stops the experiment when it enters
+      ALARM (Lab 27.2.1). Every experiment in this course has one.
+    AllowedPattern: '^arn:aws[a-z-]*:cloudwatch:[a-z0-9-]+:\d{12}:alarm:.+$'
+  StressSeconds:
+    Type: Number
+    Description: How long stress-ng runs on the target, in seconds.
+    Default: 240
+    MinValue: 60
+    MaxValue: 280
+
+Resources:
+  ExperimentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /fis/${StudentId}-experiments
+      RetentionInDays: 7
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  # The role FIS assumes to run experiments. The trust policy only lets FIS
+  # assume it for experiments in this account and Region (confused deputy).
+  ExperimentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: fis.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:fis:${AWS::Region}:${AWS::AccountId}:experiment/*
+      Policies:
+        - PolicyName: fis-cpu-stress
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ResolveTargets
+                Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - tag:GetResources
+                Resource: '*'
+              # SendCommand is authorized against the document AND each
+              # instance, so it needs both statements.
+              - Sid: OnlyTheStressDocument
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWSFIS-Run-CPU-Stress
+              - Sid: OnlyTaggedInstances
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Condition:
+                  StringEquals:
+                    ssm:resourceTag/fis-target: !Ref TargetTagValue
+              - Sid: TrackAndCancelCommands
+                Effect: Allow
+                Action:
+                  - ssm:ListCommands
+                  - ssm:CancelCommand
+                Resource: '*'
+              - Sid: ExperimentLogging
+                Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: '*'
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  CpuStressOneInstance:
+    Type: AWS::FIS::ExperimentTemplate
+    Properties:
+      Description: !Sub >-
+        ${StudentId}: CPU stress on one web server for ${StressSeconds} seconds.
+        Hypothesis: the ALB keeps serving within the steady state.
+      RoleArn: !GetAtt ExperimentRole.Arn
+      StopConditions:
+        - Source: aws:cloudwatch:alarm
+          Value: !Ref StopConditionAlarmArn
+      Targets:
+        OneWebServer:
+          ResourceType: aws:ec2:instance
+          ResourceTags:
+            fis-target: !Ref TargetTagValue
+          Filters:
+            - Path: State.Name
+              Values:
+                - running
+          # Blast radius: exactly one instance, picked at random.
+          SelectionMode: COUNT(1)
+      Actions:
+        StressCpu:
+          ActionId: aws:ssm:send-command
+          Description: Run the AWS-owned AWSFIS-Run-CPU-Stress document.
+          Parameters:
+            documentArn: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWSFIS-Run-CPU-Stress
+            documentParameters: !Sub '{"DurationSeconds":"${StressSeconds}","InstallDependencies":"True"}'
+            # Slightly longer than the stress itself, so FIS watches it all.
+            duration: PT5M
+          Targets:
+            Instances: OneWebServer
+      ExperimentOptions:
+        AccountTargeting: single-account
+        EmptyTargetResolutionMode: fail
+      LogConfiguration:
+        LogSchemaVersion: 2
+        CloudWatchLogsConfiguration:
+          LogGroupArn: !GetAtt ExperimentLogGroup.Arn
+      Tags:
+        Name: !Sub ${StudentId}-cpu-stress-one
+        Student: !Ref StudentId
+
+  # TODO(student): Lab 27.2.3 adds a second experiment template that stops
+  # the web servers in one Availability Zone, with the same stop condition.
+
+Outputs:
+  ExperimentRoleArn:
+    Value: !GetAtt ExperimentRole.Arn
+  CpuStressTemplateId:
+    Description: Pass to aws fis start-experiment --experiment-template-id.
+    Value: !Ref CpuStressOneInstance

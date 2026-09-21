@@ -1,677 +1,1264 @@
-# Terraform
+# Topic 17: Terraform
 
 <!-- TOC -->
 
-- [Terraform](#terraform)
+- [Topic 17: Terraform](#topic-17-terraform)
+  - [What changed in the 2026 edition](#what-changed-in-the-2026-edition)
+  - [Exam coverage](#exam-coverage)
+  - [Cost and cleanup](#cost-and-cleanup)
   - [Guidance](#guidance)
+  - [Conventions](#conventions)
   - [Lesson 17.1: Introduction to Terraform](#lesson-171-introduction-to-terraform)
     - [Principle 17.1](#principle-171)
-    - [Prerequisites 17.1](#prerequisites-171)
-      - [Lab 17.1.1 Terraform Language Features](#lab-1711-terraform-language-features)
-        - [Types](#types)
-        - [Built-in Functions](#built-in-functions)
-        - [Other Important Language Features](#other-important-language-features)
-      - [Lab 17.1.2 Terraform Resources, Data Sources, and Variables](#lab-1712-terraform-resources-data-sources-and-variables)
-        - [Resources](#resources)
-        - [Data Sources](#data-sources)
-        - [Input Variables](#input-variables)
-        - [Local Values](#local-values)
-        - [Outputs](#outputs)
+    - [Practice 17.1](#practice-171)
+      - [Lab 17.1.1: Toolchain and language features](#lab-1711-toolchain-and-language-features)
+      - [Lab 17.1.2: Resources, data sources and variables](#lab-1712-resources-data-sources-and-variables)
     - [Retrospective 17.1](#retrospective-171)
-      - [Question: Default Minimum Module Files](#question-default-minimum-module-files)
-  - [Lesson 17.2: Getting Started and Terraform State](#lesson-172-getting-started-and-terraform-state)
+  - [Lesson 17.2: Getting started and Terraform state](#lesson-172-getting-started-and-terraform-state)
     - [Principle 17.2](#principle-172)
     - [Practice 17.2](#practice-172)
-      - [Lab 17.2.1: Terraform Quickstart](#lab-1721-terraform-quickstart)
-      - [Lab 17.2.2: Terraform State Management](#lab-1722-terraform-state-management)
-        - [Question: State Management](#question-state-management)
-        - [Question: Secrets](#question-secrets)
-      - [Lab 17.2.3: Terraform State Lock](#lab-1723-terraform-state-lock)
-        - [Question: State Issues](#question-state-issues)
+      - [Lab 17.2.1: Terraform quickstart](#lab-1721-terraform-quickstart)
+      - [Lab 17.2.2: Remote state in S3](#lab-1722-remote-state-in-s3)
+      - [Lab 17.2.3: State locking without DynamoDB](#lab-1723-state-locking-without-dynamodb)
     - [Retrospective 17.2](#retrospective-172)
-      - [Question: Terraform State Security](#question-terraform-state-security)
-  - [Lesson 17.3: Terraform Project Management](#lesson-173-terraform-project-management)
+  - [Lesson 17.3: Environments, variables and plan review](#lesson-173-environments-variables-and-plan-review)
     - [Principle 17.3](#principle-173)
     - [Practice 17.3](#practice-173)
-      - [Lab 17.3.1: Directory Structure and Workspaces to Separate Environments](#lab-1731-directory-structure-and-workspaces-to-separate-environments)
-        - [Question: Workspaces](#question-workspaces)
-      - [Lab 17.3.2 Better Use of Variables, Automation With Plan and Apply](#lab-1732-better-use-of-variables-automation-with-plan-and-apply)
-        - [Question: CI/CD Pipelines](#question-cicd-pipelines)
-      - [Lab 17.3.3: Further Network Changes](#lab-1733-further-network-changes)
+      - [Lab 17.3.1: Workspaces and separate state](#lab-1731-workspaces-and-separate-state)
+      - [Lab 17.3.2: Variables, validation and tfvars files](#lab-1732-variables-validation-and-tfvars-files)
+      - [Lab 17.3.3: Saved plans and plan review](#lab-1733-saved-plans-and-plan-review)
+      - [Lab 17.3.4: Further network changes](#lab-1734-further-network-changes)
     - [Retrospective 17.3](#retrospective-173)
-      - [Question: View Terraform Plan File](#question-view-terraform-plan-file)
-  - [Lesson 17.4: Using Terraform Modules](#lesson-174-using-terraform-modules)
+  - [Lesson 17.4: Using Terraform modules](#lesson-174-using-terraform-modules)
     - [Principle 17.4](#principle-174)
     - [Practice 17.4](#practice-174)
-      - [Lab 17.4.1: Creating and Using a Module](#lab-1741-creating-and-using-a-module)
-      - [Lab 17.4.2: Module Versioning](#lab-1742-module-versioning)
+      - [Lab 17.4.1: Creating and using a local module](#lab-1741-creating-and-using-a-local-module)
+      - [Lab 17.4.2: A module from the registry](#lab-1742-a-module-from-the-registry)
+      - [Lab 17.4.3: Module versioning](#lab-1743-module-versioning)
     - [Retrospective 17.4](#retrospective-174)
-      - [Question: When to Use Modules](#question-when-to-use-modules)
+  - [Lesson 17.5: Guardrails and tests](#lesson-175-guardrails-and-tests)
+    - [Principle 17.5](#principle-175)
+    - [Practice 17.5](#practice-175)
+      - [Lab 17.5.1: Preconditions and postconditions](#lab-1751-preconditions-and-postconditions)
+      - [Lab 17.5.2: Check blocks](#lab-1752-check-blocks)
+      - [Lab 17.5.3: terraform test](#lab-1753-terraform-test)
+    - [Retrospective 17.5](#retrospective-175)
+  - [Lesson 17.6: Changing what already exists](#lesson-176-changing-what-already-exists)
+    - [Principle 17.6](#principle-176)
+    - [Practice 17.6](#practice-176)
+      - [Lab 17.6.1: Import blocks](#lab-1761-import-blocks)
+      - [Lab 17.6.2: Moved blocks](#lab-1762-moved-blocks)
+      - [Lab 17.6.3: Removed blocks and drift](#lab-1763-removed-blocks-and-drift)
+      - [Lab 17.6.4: Clean up the module](#lab-1764-clean-up-the-module)
+    - [Retrospective 17.6](#retrospective-176)
   - [Further Reading](#further-reading)
 
 <!-- /TOC -->
 
+## What changed in the 2026 edition
+
+- **Terraform 1.11 or later.** The 2022 module asked for 0.12. Every
+  snippet here has been checked with `terraform fmt` and `terraform
+  validate` on Terraform 1.11 and on the current release, with version
+  6 of the AWS provider.
+- **Provider versions go in `required_providers`.** The old quickstart
+  put `version = "~> 2.0"` inside the `provider "aws"` block. That
+  argument is deprecated; versions now live in a `terraform {}` block,
+  and the dependency lock file (`.terraform.lock.hcl`) records exactly
+  what `init` installed.
+- **Fixed invalid syntax.** The old `data "aws_vpc"` example used a
+  `tags { ... }` block. `tags` is an argument that takes a map, so it's
+  `tags = { ... }`.
+- **No hard-coded AMIs.** The `aws_instance` example reads Amazon Linux
+  2023 from the SSM public parameter instead of using `ami-1234567890`,
+  uses `t3.micro` and requires IMDSv2.
+- **State locking without DynamoDB.** Since Terraform 1.11 the S3 backend
+  locks state with a lock file in the same bucket (`use_lockfile =
+  true`), using S3 conditional writes. The DynamoDB arguments are
+  deprecated. Lab 17.2.3 no longer creates a lock table.
+- **One resource per S3 bucket setting.** Since version 4 of the AWS
+  provider, versioning, encryption and public access are separate
+  resources (`aws_s3_bucket_versioning` and friends), not arguments of
+  `aws_s3_bucket`.
+- **Workspaces are introduced as one option, not the default.** The old
+  quickstart told you never to use the `default` workspace. HashiCorp's
+  own docs now say workspaces don't suit environments that need separate
+  credentials or access controls; Lesson 17.3 compares workspaces with
+  separate state.
+- **New Lesson 17.5, guardrails and tests:** variable validation,
+  preconditions and postconditions, `check` blocks, and `terraform test`
+  with a mocked AWS provider.
+- **New Lesson 17.6, changing what already exists:** `import` blocks,
+  `moved` blocks, `removed` blocks and drift with `-refresh-only`, then a
+  cleanup lab that removes the versioned state bucket.
+- **Licence and OpenTofu.** Terraform 1.6 and later is under the
+  Business Source License 1.1, not MPL 2.0. OpenTofu is the open-source
+  fork (MPL 2.0, a CNCF sandbox project). Practice 17.1 explains what
+  that means for you.
+- **CDK for Terraform (CDKTF) was archived in December 2025.** If you
+  want to write infrastructure in a general-purpose language, see the AWS
+  CDK (module 25); this module sticks to HCL.
+- **AWS provider 6 adds a `region` argument to most resources**, so a
+  single provider configuration can manage several Regions. The labs use
+  one Region, `us-east-2`.
+- Links point to `developer.hashicorp.com` and the Terraform Registry;
+  the old `terraform.io/docs` paths redirect or no longer exist.
+
+## Exam coverage
+
+| Exam | Domain / task statement |
+|---|---|
+| SOA-C03 | Domain 3: Deployment, Provisioning, and Automation (Skill 3.1.6: use and manage third-party tools to automate resource deployment, for example Terraform and Git; Skill 3.1.3: identify and remediate deployment issues) |
+| DOP-C02 | Domain 2: Configuration Management and IaC (Task 2.1: define cloud infrastructure and reusable components to provision and manage systems throughout their lifecycle) |
+| DOP-C02 | Domain 1: SDLC Automation (Task 1.1: implement CI/CD pipelines; Task 1.2: integrate automated testing into CI/CD pipelines) |
+
+Terraform itself is named only in the CloudOps guide. The DevOps
+Professional exam asks about CloudFormation and the CDK, but the ideas
+this module drills (state, drift, previewing a change, reusable
+components, testing infrastructure code in a pipeline) are the same.
+
+## Cost and cleanup
+
+This module is cheap if you follow the labs as written.
+
+- **The state bucket** costs cents a month. It's versioned, so every
+  `apply` and every lock leaves an old version behind; Lab 17.2.3 adds a
+  lifecycle rule so they don't pile up.
+- **VPCs, subnets, route tables and internet gateways are free.** The
+  labs don't create NAT gateways, load balancers or instances. If you
+  add a NAT gateway or an instance with a public IPv4 address while
+  experimenting, both are billed by the hour; destroy them the same day.
+- **Lab 17.1.2 and Lab 17.4.2 are plan-only.** The `aws_instance` in
+  Lab 17.1.2 and the registry VPC module in Lab 17.4.2 are there to read
+  a plan, not to apply.
+- **`terraform test` with a mocked provider creates nothing in AWS.**
+  A test file without mocks does create and then destroy real resources.
+- **Terraform does not roll back.** A failed `apply` leaves whatever it
+  had created in place, recorded in state. Destroy from the same
+  directory and workspace, or you'll have resources no state file knows
+  about.
+- **Cleanup:** [Lab 17.6.4](#lab-1764-clean-up-the-module) destroys
+  every configuration and workspace, deletes the buckets you created
+  outside Terraform, then removes the state bucket, including every
+  object version and delete marker.
+
 ## Guidance
 
-- Explore the official docs! See the the Terraform [official docs](https://www.terraform.io/docs/index.html),
-  and [AWS provider docs](https://www.terraform.io/docs/providers/aws/index.html).
+- Explore the official docs! See the
+  [Terraform documentation](https://developer.hashicorp.com/terraform/docs),
+  the [Terraform language
+  reference](https://developer.hashicorp.com/terraform/language),
+  and the [AWS provider
+  docs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
+  in the Terraform Registry.
+
+- AWS publishes its own [best practices for using the Terraform AWS
+  provider](https://docs.aws.amazon.com/prescriptive-guidance/latest/terraform-aws-provider-best-practices/introduction.html)
+  (AWS Prescriptive Guidance). Skim it now; several questions come from it.
 
 - Avoid using other sites like stackoverflow.com for answers \-- part
   of the skill set you're building is finding answers straight from
   the Terraform docs.
 
+- Watch the dates on what you read. A tutorial that puts `version` in a
+  `provider` block, sets `acl = "private"` on `aws_s3_bucket` or creates
+  a DynamoDB lock table was written for an older Terraform or provider.
+
 - Explore your curiosity. Try to understand why things work the way
   they do. Read more of the documentation than just what you need to
   find the answers.
+
+## Conventions
+
+- **Profile and Region.** Everything runs in the lab account in
+  `us-east-2` with the `lab` profile. The provider and backend blocks in
+  this module set `profile = "lab"`; if you'd rather keep profiles out of
+  code, delete that line and `export AWS_PROFILE=lab` in each shell
+  instead. Don't do both with different values.
+- **Placeholders.** Examples use `123456789012` for the lab account and
+  `<you>` for your identifier. Keep real account IDs out of your
+  repository.
+- **Names and tags** include your identifier. Every configuration sets
+  `default_tags` on the provider with `owner = "<you>"` and `topic =
+  "17"`, so Lab 17.6.4 can find what's left.
+- **Your repository.** Keep your code in `17-terraform/` of your lab
+  repository. Commit your `.tf` files and each root configuration's
+  `.terraform.lock.hcl`. Never commit `.terraform/`, `*.tfstate`,
+  `*.tfstate.backup`, saved plan files or `.tfvars` files that hold
+  secrets. Add a `.gitignore` before your first `terraform init`.
 
 ## Lesson 17.1: Introduction to Terraform
 
 ### Principle 17.1
 
-[Terraform](https://www.terraform.io/) is an open-source tool for writing
-infrastructure as code created and developed by
-[HashiCorp](https://www.hashicorp.com/). It provides an alternative to AWS
-CloudFormation for managing cloud resources, and through the use of various
-_providers_, it is used to manage other vendors' resources as well. Terraform is
-written using HashiCorp's HCL syntax, but exhaustive knowledge of HCL is not
-necessary to [use Terraform effectively.](https://www.terraform.io/docs/configuration/syntax.html)
+*Terraform compares the configuration you write with the state it
+recorded last time and with what's really there, and makes the API calls
+to close the gap. There is no service on the other end holding your
+stack: the state is yours to keep.*
 
-Terraform doesn't necessarily make it as easy to port infrastructure between
-cloud providers as it may have a reputation for. Providers have different
-products, and so rewriting code is necessary to move between, say, GCP and AWS.
-But Terraform _does_ make it easy to share info between providers, and
-definitely makes multi-cloud or a migration more manageable.
+### Practice 17.1
 
-### Prerequisites 17.1
+[Terraform](https://developer.hashicorp.com/terraform/docs) is an
+infrastructure-as-code tool from HashiCorp (an IBM company since 2025).
+You write configuration in HCL; **providers** turn it into API calls. The
+AWS provider is one of thousands, which is why teams that manage AWS
+alongside a DNS provider, GitHub, a monitoring SaaS or another cloud
+tend to pick Terraform. It doesn't make moving between clouds easy (an
+`aws_vpc` isn't a `google_compute_network`), but it gives you one tool
+and one workflow for all of them.
 
-- Terraform [version 0.12.0 or later](https://www.terraform.io/downloads.html)
+**Licence and OpenTofu.** Terraform was MPL 2.0 open source until
+August 2023. Terraform 1.6 and later is released under the [Business
+Source License
+1.1](https://github.com/hashicorp/terraform/blob/main/LICENSE), which
+allows production use by anyone except in a product that competes with
+HashiCorp's paid offerings. In response, a group of vendors forked
+Terraform 1.5 as [OpenTofu](https://opentofu.org/docs/), now under the
+Linux Foundation and accepted into the [CNCF as a sandbox
+project](https://www.cncf.io/projects/opentofu/) in April 2025. The
+`tofu` CLI reads the same `.tf` files and uses the same providers, and
+everything in this module works with either, with one difference worth
+knowing: OpenTofu can encrypt state and plan files itself, with a key
+from AWS KMS among others ([state
+encryption](https://opentofu.org/docs/language/state/encryption/)). The
+two have diverged since the fork, so check before assuming a feature
+from one exists in the other. The labs say `terraform`; if you use
+OpenTofu, substitute `tofu`.
 
-#### Lab 17.1.1 Terraform Language Features
+You have now met, or will meet, three ways to write infrastructure as
+code in this course. Module 25 has the same table from the CDK's side;
+this one adds the rows that matter most when Terraform is the tool.
 
-We'll quickly go over some basic language features to help us get started...
+| | CloudFormation (module 01) | AWS CDK (module 25) | Terraform (this module) |
+|---|---|---|---|
+| You write | YAML templates | Python (or TypeScript, Java, C#, Go) that synthesizes templates | HCL (or JSON) |
+| Deployment engine | CloudFormation | CloudFormation | Terraform CLI calling AWS APIs through a provider |
+| Where state lives | The stack, inside CloudFormation | The stack, inside CloudFormation | A state file you store, lock and protect (S3 with `use_lockfile`) |
+| Locking | CloudFormation serializes updates to a stack | Same as CloudFormation | The backend's lock (a `.tflock` object in S3) |
+| Preview a change | Change set | `cdk diff` (creates a change set) | `terraform plan`, saved with `-out` and applied as is |
+| When an apply fails | Rolls back to the last good state | Same as CloudFormation | Stops; what was created stays and is in state. Fix and re-apply |
+| Reuse | Nested stacks, modules, macros | Constructs published as libraries | Modules from a registry, Git or a local path |
+| Bring existing resources in | Resource import, IaC generator | `cdk import`, `cdk migrate` | `import` blocks, with `-generate-config-out` |
+| Find drift | Drift detection | `cdk drift` | `terraform plan -refresh-only` |
+| Rename without replacing | Stack refactoring | `cdk refactor` | `moved` blocks |
+| Stop managing without deleting | `DeletionPolicy: Retain`, then remove | `RemovalPolicy.RETAIN`, `cdk orphan` | `removed` blocks with `destroy = false` |
+| Unit tests | cfn-lint and Guard check the template | `aws_cdk.assertions` against the synthesized template | `terraform test`, with mocked providers |
+| Runtime assertions | Hooks, Config rules | Same, plus aspects at synth time | `check` blocks, preconditions and postconditions |
+| Secrets | Dynamic references, never stored in the template | Same as CloudFormation | Stored in state in plain text unless the argument is write-only or ephemeral |
+| Other providers | Registry extensions (third-party resource types) | Same as CloudFormation | Thousands of providers; the main reason teams choose it |
+| Per-account setup | None | `cdk bootstrap` once per account and Region | A state bucket |
+| Licence | AWS service | Apache 2.0 | BSL 1.1 (OpenTofu fork: MPL 2.0) |
 
-##### Types
+#### Lab 17.1.1: Toolchain and language features
 
-- primitive types
-  - string
-  - number (no separate type for int vs float)
-  - bool
-- complex (constructed) types - all members of collections must be the same type
-  - list: zero-indexed ordered collection, accessed via `my_list[index_number]`
-  - map: group of key-value pairs, access via `my_map["element_key"]`
-  - set: non-indexed non-ordered collection, no literal syntax; call `toset` to
-    convert a list to a set
-- null type
+- Install Terraform 1.11 or later from the [install
+  page](https://developer.hashicorp.com/terraform/install) and run
+  `terraform version`. If you use a version manager such as `tfenv`, or
+  OpenTofu, note which. Pin the version you use in a `.terraform-version`
+  file or in your notes; later labs assume at least 1.11.
 
-See [the official
-documentation](https://www.terraform.io/docs/configuration/expressions.html#types-and-values)
-for more details on types.
+- Run `terraform -help` and skim the command list. You'll use `init`,
+  `fmt`, `validate`, `plan`, `apply`, `destroy`, `show`, `state`,
+  `workspace`, `console` and `test` in this module.
 
-##### Built-in Functions
+- Read [Types and
+  values](https://developer.hashicorp.com/terraform/language/expressions/types).
+  In brief:
+  - primitive types: `string`, `number` (no separate int and float) and
+    `bool`;
+  - collection types, whose elements all share one type: `list` (ordered,
+    `my_list[0]`), `map` (`my_map["key"]`) and `set` (unordered, no index;
+    `toset()` turns a list into one);
+  - structural types, whose attributes can differ: `object` and `tuple`;
+  - `null`, which means "leave this argument unset".
 
-There are [too many functions to go over in explicit
-detail](https://www.terraform.io/docs/configuration/functions.html); most of
-them do what you'd expect given their name. Give them a glance now anyway, and
-come back when you need to reference them later. **Note:** Terraform only supports
-these built-in functions; you cannot define your own.
+- Skim the [built-in
+  functions](https://developer.hashicorp.com/terraform/language/functions).
+  There are too many to learn, and you'll come back when you need one.
+  Providers can now ship their own functions too, but you still can't
+  define functions in HCL.
 
-##### Other Important Language Features
+- Terraform has three ways to make many of something:
+  - `count` makes a *list* of resources. If an item in the middle
+    goes away, every later index shifts, and Terraform plans to replace
+    them.
+  - `for_each` makes a *map* of resources keyed by strings you choose,
+    from a map or a set of strings. Removing one key touches only that
+    resource.
+  - `for` expressions build lists and maps from other collections, much
+    like a Python comprehension.
 
-Terraform allows you to approximate loop-like behavior when creating resources
-by using a `count` meta-argument in your resource blocks. `count` is fairly
-limited, and the fact that it makes a _list_ (i.e. ordered collection) of
-resources can lead to some unwanted behavior should a resource's index in the
-list need to change.
+- String interpolation uses `${}`:
 
-In Terraform 0.12 there are two new expressions to help deal with `count`'s
-limitations: You can use a `for` expression to simply loop over a list or map
-(very similar to a Python list or dict comprehension); or you can use a `for_each`
-meta-argument (similarly to `count`) to create a _map_ of resources (based off a
-_map_ or _set_ of strings).
+  ```hcl
+  greeting = "Hello ${var.world}"
+  ```
 
-String interpolation is accomplished with `${}` syntax; for example:
+- Start `terraform console` in an empty directory and try some of this:
+  `cidrsubnet("10.0.0.0/20", 4, 1)`, `[for s in ["a", "b"] : upper(s)]`,
+  `{ for i, az in ["us-east-2a", "us-east-2b"] : az => i }`,
+  `toset(["a", "a", "b"])`, `type(1)`.
 
-```
-"Hello ${var.world}"
-```
+##### Question: count or for_each
 
-#### Lab 17.1.2 Terraform Resources, Data Sources, and Variables
+_You create three subnets with `count` from a list of AZs, then remove
+the first AZ from the list. What does the plan say? What does the same
+change do with `for_each`? When is `count` still the right choice?_
 
-##### Resources
+#### Lab 17.1.2: Resources, data sources and variables
 
-Terraform infrastructure is created through _resource_ elements, declared in
-blocks as follows:
+Work in a directory named `language` in `17-terraform/`. You'll write a
+few blocks, run `terraform init` and `terraform plan`, read the plan,
+and apply nothing.
 
-```
-resource "aws_instance" "my_instance" {
-  instance_type = "t2.micro"
-  ami           = "ami-1234567890"
-}
-```
+- Start with a `terraform` block and a provider configuration. The
+  `terraform` block says which Terraform and which providers this
+  configuration needs; the `provider` block configures the provider.
 
-The combination of _resource type_ and _resource name_ must be unique; this
-allows the resource to be referenced throughout your code. You can reference an
-argument set in the resource configuration: `aws_instance.my_instance.ami`
-would evaluate to `ami-1234567890"`. You can also reference attributes of the
-resources you create (it is up to the provider to implement this):
-`aws_instance.my_instance.id` would give you the instance id. See the provider
-docs for a list of exported attributes for a resource type.
+  ```hcl
+  terraform {
+    required_version = ">= 1.11"
 
-##### Data Sources
-
-Terraform has a concept of a _data_ resource; declaring this won't create any
-infrastructure, but will allow information to be read and referenced elsewhere
-in your code. The arguments for this block are used as filters; it is often
-required that one and only one resource match all the filters, and additionally
-it must be an exact match.
-
-```
-data "aws_vpc" "my_vpc" {
-  tags {
-    Name        = "my-public-vpc"
-    Environment = "production"
+    required_providers {
+      aws = {
+        source  = "hashicorp/aws"
+        version = "~> 6.0"
+      }
+    }
   }
-}
-```
 
-Again, the combination of _resource type_ and _resource name_ must be unique. In
-this case, you'd reference the vpc id using `data.aws_vpc.my_vpc.id`.
+  provider "aws" {
+    region  = "us-east-2"
+    profile = "lab"
 
-##### Input Variables
+    default_tags {
+      tags = {
+        owner = "<you>"
+        topic = "17"
+      }
+    }
+  }
+  ```
 
-Terraform supports _input variables_ that need to be passed to your stack
-(similar to parameters in CloudFormation); they're declared as follows:
+  Read [Provider
+  requirements](https://developer.hashicorp.com/terraform/language/providers/requirements).
+  What does `~> 6.0` allow, and what would `~> 6.10.0` allow?
 
-```
-variable "region" {
-  default = "us-east-1"
-  type    = string
-}
-```
+- **Resources** create infrastructure. The resource type and name
+  together must be unique, and are how you refer to the resource
+  elsewhere: `aws_instance.web.id` is the instance ID once it exists.
+  The provider docs list each resource's arguments and the attributes it
+  exports.
 
-This would be referenced as `var.region`. Note that "default" values for a
-variable cannot themselves contain variables.
+- **Data sources** read something that already exists. Their arguments
+  act as filters, and most must match exactly one object. The AMI comes
+  from the SSM public parameter, never a hard-coded ID:
 
-##### Local Values
+  ```hcl
+  data "aws_ssm_parameter" "al2023" {
+    name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+  }
 
-You can declare "local" values in a terraform file/module, allowing you to make
-your code more readable and easier to update:
+  resource "aws_instance" "web" {
+    ami           = data.aws_ssm_parameter.al2023.value
+    instance_type = "t3.micro"
 
-```
-locals {
-  team = "Stelligent"
-}
-```
+    metadata_options {
+      http_tokens = "required"
+    }
+  }
+  ```
 
-You'd reference this with `local.team`. It's a bit of a contrived example, but
-it would probably be better to take a team name as a variable, and construct the
-local from that:
+  A data source that filters by tags takes a map:
 
-```
-variable "team_name" {
-  default = "Stelligent"
-  type    = string
-}
+  ```hcl
+  data "aws_vpc" "shared" {
+    tags = {
+      Name        = "my-public-vpc"
+      Environment = "production"
+    }
+  }
+  ```
 
-locals {
-  team = var.team_name
-}
-```
+  You'd use its ID as `data.aws_vpc.shared.id`. There's no such VPC in
+  your account, so leave this one commented out unless you create one.
 
-##### Outputs
+- **Input variables** are the configuration's parameters, like
+  CloudFormation parameters. Reference them as `var.<name>`:
 
-When using _modules_, you can output values. We'll cover this in the modules labs.
+  ```hcl
+  variable "team_name" {
+    type        = string
+    description = "Team that owns these resources."
+    default     = "Stelligent"
+  }
+  ```
+
+  Don't make the Region a variable with a default of its own; the
+  profile or provider block already says where you are.
+
+- **Local values** name an expression so you write it once:
+
+  ```hcl
+  locals {
+    name_prefix = "stelligent-u-17-${var.team_name}"
+  }
+  ```
+
+- **Outputs** expose values to the person running Terraform, to other
+  configurations and to modules that call this one. Add an output for the
+  AMI ID you looked up. Terraform marks SSM parameter values sensitive,
+  so you'll need `sensitive = true` on the output, or `nonsensitive()`
+  around the value; decide which is right for an AMI ID.
+
+- Run `terraform init`, `terraform fmt`, `terraform validate` and
+  `terraform plan`. Read the plan: which values are known now and which
+  say `(known after apply)`? Don't apply. Delete the `aws_instance` when
+  you're done reading.
+
+##### Question: Plan without apply
+
+_`terraform plan` needed your AWS credentials even though it created
+nothing. What did it call AWS for? Which of the commands you ran worked
+without credentials?_
 
 ### Retrospective 17.1
 
 #### Question: Default Minimum Module Files
 
-_What are the recommended files for a minimum Terraform module?_
+_What are the recommended files for a minimum Terraform module? Read
+[Standard module
+structure](https://developer.hashicorp.com/terraform/language/modules/develop/structure)
+and the [style
+guide](https://developer.hashicorp.com/terraform/language/style). Which
+of those files did you just write, and where do `terraform` and
+`provider` blocks belong?_
 
-## Lesson 17.2: Getting Started and Terraform State
+## Lesson 17.2: Getting started and Terraform state
 
 ### Principle 17.2
 
-Terraform stores the state of your infrastructure project as a JSON file.
-Terraform natively supports many methods of storing and managing your project's
-state.
+*State is Terraform's memory of what it manages. Keep it remote,
+versioned, encrypted, locked, and readable only by the people and
+pipelines that run Terraform.*
 
 ### Practice 17.2
 
-#### Lab 17.2.1: Terraform Quickstart
+Terraform records every object it manages, and the attributes it read
+back, in a JSON state file. With no backend configured, that file is
+`terraform.tfstate` next to your code. In these labs you'll create an S3
+bucket with local state, move the state into that bucket, and watch the
+S3 backend lock it. Read the [S3 backend
+docs](https://developer.hashicorp.com/terraform/language/backend/s3)
+before you start.
 
-Now we're going to quickly get a Terraform environment up and running. Some of
-the actions we'll take won't have an immediate explanation, but we'll cover the
-reasoning behind them later. For the moment, we just want to get working so that
-we can be more hands-on.
+#### Lab 17.2.1: Terraform quickstart
 
-- Create a directory named `state-management` (more on why shortly). In that
-  directory, create a file named `main.tf` containing the following; feel free
-  to replace the region with one of your choice. You'll need to specify the
-  name of the AWS profile you'll be using, as well.
+- In `17-terraform/`, create a directory named `state-management` and a
+  `main.tf` with the `terraform` and `provider` blocks from Lab 17.1.2.
 
-  ```
-  provider "aws" {
-    version = "~> 2.0"
-    region  = "us-east-2"
-    profile = "your-profile-name-here"
-  }
-  ```
+- Using the AWS provider docs, write the code for an S3 bucket named
+  `stelligent-u-17-<you>-tfstate` with:
+  - versioning enabled (`aws_s3_bucket_versioning`);
+  - Block Public Access on, all four settings
+    (`aws_s3_bucket_public_access_block`). New buckets already have it,
+    but saying so in code means Terraform will notice if someone turns
+    it off;
+  - default encryption. New buckets use SSE-S3 already; use SSE-KMS with
+    the `aws/s3` key or your own key only if you've done module 10 and
+    want to (`aws_s3_bucket_server_side_encryption_configuration`).
 
-As Terraform can be used to manage resources for vendors other than AWS, we're
-specifying above that we intend to create AWS resources in this project. Should
-we want to create resources for another vendor (or custom resources, etc.), we'd
-need to create a provider block for them as well. With the above code, Terraform
-will take care of installing the provider that will allow us to create and
-configure AWS resources.
+  Don't set `acl` on the bucket: ACLs are disabled on new buckets.
 
-- Using the [AWS provider docs](https://www.terraform.io/docs/providers/aws/index.html)
-  as a guide, write the code necessary to create an S3 bucket with versioning
-  and encryption enabled, that allows only private access. Standard (not KMS)
-  encryption is fine for now. Give this bucket a name indicating you're using
-  it for a Stelligent-U CL module. (Do this in main.tf)
+- Run `terraform init` and read what it did. Open
+  `.terraform.lock.hcl`: what's recorded in it, and why should it be
+  committed?
 
-- From the `state-management` directory, run `terraform init` in order to
-  prepare to create the bucket. Pay attention to what Terraform is doing.
+- Run `terraform plan`, then `terraform apply`. Terraform shows the plan
+  again and waits for `yes`.
 
-- Terraform uses "workspaces" to isolate state for different environments; run
-  `terraform workspace list` to see the available workspaces. It's not good
-  practice to use the `default` workspace, so create a new one by running
-  `terraform workspace new` with a workspace name of your choice as the final argument.
+- Confirm the bucket with the CLI: `aws s3api get-bucket-versioning
+  --bucket stelligent-u-17-<you>-tfstate`.
 
-- Finally, run `terraform apply` to create the S3 bucket. Please note at this
-  point Terraform will be making AWS API calls on your behalf, so you must
-  have AWS credentials for the profile name you specified in `main.tf`.
+#### Lab 17.2.2: Remote state in S3
 
-- Prior to creating resources (or changing them), Terraform will list the
-  actions it will take, and prompt you to confirm you wish to proceed.
+- Look at `terraform.tfstate`. It's JSON. Find the bucket, its
+  attributes, the `serial` and the `lineage`. Run `terraform state list`
+  and `terraform state show aws_s3_bucket_versioning.<name>`.
 
-Log in to the console and verify your bucket was created as expected.
+- Keeping state on a laptop is fine for a spike, but nobody else can
+  see it, and committing it to Git means secrets in Git and state that's
+  always one commit behind. Add a backend to the `terraform` block in
+  `main.tf`:
 
-#### Lab 17.2.2: Terraform State Management
-
-In contrast to CloudFormation, Terraform stores project state in a file that you
-can inspect, edit, and reference in other projects. Accordingly, you're required
-to manage this state. Terraform allows you to do this in several ways, and in
-this lab we'll examine a couple of them, settling on a method that is standard
-best practice.
-
-As part of the commands we ran above, Terraform created some subdirectories.
-One of these is `terraform.tfstate.d/<workspace-name>/`, and it now contains
-a statefile (`terraform.tfstate`). Examine this file - it's just JSON, which is
-often convenient. This _local state_ is the default way Terraform manages state;
-we must configure Terraform to use another method to manage state.
-
-While it's fine for a project spike with a single engineer, it's generally
-not good practice to manage state locally or even in a git repository;
-this can lead to problems when multiple engineers are working on the project,
-or should someone forget to commit the latest state to version control. So
-we'll configure Terraform to use the S3 bucket we just created to house our
-infrastructure state. This is known as _remote state_.
-
-- Paste the following code at the beginning of `main.tf`, substituting values
-  where necessary:
-
-  ```
+  ```hcl
   terraform {
     backend "s3" {
-      bucket  = "<bucket-name-you-chose-previously>"
-      key     = "state_management/terraform.tfstate"
-      encrypt = true
-      region  = "<region-the-bucket-is-in>"
-      profile = "<profile-if-you-specified-one>"
+      bucket       = "stelligent-u-17-<you>-tfstate"
+      key          = "state-management/terraform.tfstate"
+      region       = "us-east-2"
+      profile      = "lab"
+      encrypt      = true
+      use_lockfile = true
     }
   }
   ```
 
-This configures Terraform to use our S3 bucket to store state. This is why we
-enabled versioning and encryption when creating the S3 bucket - versioning is
-very useful should our project's statefile get deleted somehow, and encryption
-is important as the statefile is simply JSON. We still have the problem of any
-secrets having only S3 standard encryption (i.e. not KMS), but it's better than
-before and can be somewhat managed via IAM.
+  Backend blocks can't use variables or locals; every value is literal
+  or passed with `terraform init -backend-config=...`.
 
-- Run `terraform init` again - this will cause Terraform to pick up the change
-  in configuration. Terraform will pick up that we've changed our state
-  management method, and ask if we want to move the statefile to our S3
-  bucket. Answer "yes" when you're prompted to do so.
+- Run `terraform init -migrate-state` and answer `yes` when it asks to
+  copy the state into S3.
 
-- Examine the local statefile. It should be empty. There should also be a
-  backup statefile. Examine the backup.
-
-- Confirm the new state is stored in your S3 bucket. Examine this file; what
-  differences are there between this one and the backup you have locally?
+- Look at the local `terraform.tfstate` now, and at
+  `terraform.tfstate.backup`. Download the state object from S3 with
+  `aws s3 cp` and compare it with the backup. Then delete both local
+  files: from now on, S3 has the only copy, and bucket versioning is
+  your backup.
 
 ##### Question: State Management
 
-_While it's good we're now managing state remotely, can you think of any
-problems we might run into with our current state management setup?_
+_Your state now lives in the bucket that the state describes. What could
+go wrong with that? What protects you if someone runs `terraform
+destroy` in this directory?_
 
 ##### Question: Secrets
 
-_Storing secrets in Terraform state is an ongoing issue. Can you think of
-a better solution than the basic AES256 encryption we've used in these
-labs so far?_
+_Read [Manage sensitive data in your
+configuration](https://developer.hashicorp.com/terraform/language/manage-sensitive-data).
+If a configuration creates a database with a password, where does the
+password end up? What do `sensitive = true`, a customer managed KMS key
+on the backend (`kms_key_id`), [ephemeral
+resources](https://developer.hashicorp.com/terraform/language/resources/ephemeral)
+and [write-only
+arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral/write-only)
+each change? Which of them keeps the password out of state?_
 
-#### Lab 17.2.3: Terraform State Lock
+#### Lab 17.2.3: State locking without DynamoDB
 
-Remote state solves much of the problem of state getting out of sync, and some
-of the problem of multiple users making changes to a project, but there is still
-significant risk should multiple users (or even the same user!) attempt to apply
-changes simultaneously. To help manage this risk, Terraform supports _state
-locking_, which ensures only one set of changes is applied to a project at
-a time. In this lab, we'll create the necessary infrastructure to support state
-lock, and reconfigure our project to use state lock.
+Remote state stops people working from different copies, but two runs
+at the same moment can still both read the state, both change things,
+and the last one to write wins. A **lock** makes the second run wait or
+fail.
 
-- With the AWS provider docs as a reference, create a DynamoDB table with a
-  string attribute of "LockID"; use this attribute as the hash key.
+Until Terraform 1.10, the S3 backend needed a DynamoDB table for
+locking. Terraform 1.11 made **S3 native locking** generally available:
+with `use_lockfile = true`, Terraform writes `<key>.tflock` next to the
+state with an S3 [conditional
+write](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)
+that succeeds only if the object doesn't already exist, and deletes it
+when it's done. The DynamoDB arguments (`dynamodb_table`) are deprecated;
+if you're migrating an existing backend, you can set both while
+everyone upgrades, then remove the table.
 
-- Run `terraform apply` to create the DynamoDB table.
+You enabled the lock file in Lab 17.2.2. Now watch it work.
 
-- Modify the `terraform` block in `main.tf` to include the line
-  `dynamodb_table = <name-you-chose-for-the-table>`.
+- In one terminal, change something small (add a tag to the bucket) and
+  run `terraform apply`. Leave it waiting at the `yes` prompt.
 
-- Run `terraform init` yet again.
+- In a second terminal, in the same directory, run `terraform plan`.
+  Read the error: who holds the lock, since when, and the lock ID.
 
-Terraform is now configured to lock the project state when making changes; if
-unable to obtain a state lock (after a configurable timeout), Terraform will not
-make the changes. While the resource creation and changes we've made thus far
-are fairly quick, you should take the opportunity to observe the state actually
-being locked in later portions of this module.
+- While the first terminal is still waiting, list the objects next to
+  the state: `aws s3api list-objects-v2 --bucket
+  stelligent-u-17-<you>-tfstate --prefix state-management/`. Download
+  the `.tflock` object and read it.
+
+- In the second terminal, run `terraform plan -lock-timeout=2m`, then
+  answer `yes` in the first. What happens to the second run?
+
+- Read [`terraform
+  force-unlock`](https://developer.hashicorp.com/terraform/cli/commands/force-unlock).
+  Don't run it now; write down when it's safe to.
+
+- The bucket is versioned, so every lock and every state write leaves a
+  noncurrent version, and every lock release leaves a delete marker. List
+  them with `aws s3api list-object-versions`. Add an
+  `aws_s3_bucket_lifecycle_configuration` that expires noncurrent
+  versions after 90 days and removes expired delete markers. Keep enough
+  history to recover from a bad apply; decide how much that is.
+
+- Check the IAM side: the backend docs list the permissions a role needs
+  on the state object and on the lock file. Which extra action does the
+  lock file need that the state file doesn't?
 
 ##### Question: State Issues
 
 _Do you think using Terraform to bootstrap and manage its own state
-infrastructure is a problem? Why or why not?_
+bucket is a problem? Why or why not? How else could the bucket be
+created (think module 01, or module 19's account baseline)?_
+
+##### Question: Why not DynamoDB
+
+_The DynamoDB table was one more resource to create, pay for, protect
+and clean up. What else did moving the lock into S3 change? Think about
+IAM permissions, encryption of the lock, and what a stale lock looks
+like._
 
 ### Retrospective 17.2
 
 #### Question: Terraform State Security
 
 _Is any sensitive data stored in the Terraform state file? If so, what
-steps should you take to ensure the file is secure?_
+steps should you take to ensure the file is secure? Write the bucket
+policy and IAM policy you'd want in a real account: who can read state,
+who can write it, and who can delete old versions?_
 
-## Lesson 17.3: Terraform Project Management
+## Lesson 17.3: Environments, variables and plan review
 
 ### Principle 17.3
 
-There are several ways to manage environments using Terraform; we'll examine
-using Terraform's native workspaces to help with this. First, though, we'll look
-at one way to structure your project's repo to aid in management.
+*Split state by blast radius, and apply the plan you reviewed, not a
+fresh one.*
 
 ### Practice 17.3
 
-#### Lab 17.3.1: Directory Structure and Workspaces to Separate Environments
+Everything in one state file means one mistake can reach everything, and
+every plan has to refresh everything. You'll build a small network in a
+`dev` directory, run it twice with workspaces, compare that with keeping
+environments in separate directories and state keys, then tighten the
+workflow with variable validation and saved plans.
 
-We all agree it's generally a very good idea to isolate your infrastructure
-environments - we'd prefer that development environment infra changes didn't
-bring down a production environment. But if our environment data is all stored
-in a single state file, we're as tightly coupled as can be. One answer to this
-is to keep multiple environments in a single repo, simply using directory
-structure to separate project state. Additionally, we'd like to keep our network
-infra separate from, say, our ec2 instances. We'll use directory structure to
-accomplish this as well.
+#### Lab 17.3.1: Workspaces and separate state
 
-- In the root of our project (one directory above the `state-management`
-  directory we created earlier), create two more directories - `dev` and `prod`.
-  In each of these directories, create a `network-infra` directory.
+- In `17-terraform/`, next to `state-management`, create `dev/network`
+  and `prod/network`.
 
-- Again using the [AWS Provider
-  Docs](https://www.terraform.io/docs/providers/aws/index.html), write the code
-  necessary to create a vpc with two subnets (let's keep them private for now).
-  Put this code in another `main.tf` file, in the `dev/network-infra` directory.
+- Using the AWS provider docs, write a VPC with two private subnets in
+  `dev/network/main.tf`. Take the VPC CIDR and the list of availability
+  zones as variables (defaults are fine for now). Use `for_each` to make
+  one subnet per AZ, and the
+  [`cidrsubnet`](https://developer.hashicorp.com/terraform/language/functions/cidrsubnet)
+  function to calculate each subnet's CIDR. If `for_each` gets you stuck
+  for too long, use `count` and come back to it.
 
-- Declare variables for the VPC CIDR and for the availability zones in which to
-  house your subnets; go ahead for now and just define the variable where you're
-  declaring it. If you like, use either `count` or `for_each` to
-  automatically generate your desired number (in this case 2) of subnets.
-  `count` is fairly trivial in this case, look up the documentation if you need.
-  `for_each` will be somewhat more difficult. If you go the `for_each` route,
-  you may need to create a map variable that associates an AZ with a
-  pseudo-index (just a number). If you get stuck for too long, just use `count`
-  for now.
+- Copy the `terraform` and `provider` blocks from `state-management`,
+  and change the backend `key` to `dev/network/terraform.tfstate`.
 
-- Try to use the [`cidrsubnet`
-  function](https://www.terraform.io/docs/configuration/functions/cidrsubnet.html)
-  to automatically calculate the CIDRs for the subnets you create.
+- Run `terraform init`, then `terraform workspace list`. Create a
+  workspace (`terraform workspace new blue`) and apply.
 
-- You'll need to configure Terraform to again use S3 for the backend. Copy the
-  `terraform` and `provider` blocks from `main.tf` in the `state-management`
-  directory. Change the `key` in the `terraform` block to be something
-  different, say `dev/network-infra/state/terraform.tfstate`.
+- Create a second workspace (`green`), change the CIDR default so the
+  VPCs don't overlap, and apply again.
 
-- Run `terraform init` again, switch to a new (non-default) workspace, and run
-  `terraform plan` (or just `terraform apply`, as you'll be prompted).
+- List the bucket. Where did the two workspaces' state go? Read the
+  `workspace_key_prefix` argument in the backend docs. Use
+  `terraform.workspace` in a `Name` tag so you can tell the VPCs apart.
 
-- After creation is successful, switch to yet another new workspace, update your
-  CIDR variable, and run `terraform apply` again.
-
-Congratulations, you've now spun up 2 (essentially) identical VPCs, separated by
-Terraform's workspaces. Take a moment to look at your S3 state bucket - you
-should see an `env:` folder, in which subdirectories for both of your new
-workspaces live.
-
-So, we now have infrastructure environments separated by directory structure
-(i.e. our state management environment vs our dev network environments), as
-well as environments separated strictly by workspace (both of our dev network
-environments).
+- Now read [Workspaces](https://developer.hashicorp.com/terraform/cli/workspaces),
+  especially the note on when workspaces aren't appropriate. The
+  alternative is what you already did with `state-management` and
+  `dev/network`: a directory, and so a state key, per environment and
+  per component, each with its own backend configuration and possibly its
+  own account and role.
 
 ##### Question: Workspaces
 
 _Are workspaces alone sufficient to separate dev environments from prod
-environments? Why or why not?_
+environments? Why or why not? Where would each approach put the IAM
+boundary between dev and prod, and what happens to each if prod lives in
+a different AWS account?_
 
-#### Lab 17.3.2 Better Use of Variables, Automation With Plan and Apply
+#### Lab 17.3.2: Variables, validation and tfvars files
 
-Infrastructure tends to grow over time, and we could follow better practice than
-throwing all of our code in `main.tf`. Let's split our declared variables out.
+- Move your variable declarations into `variables.tf`. Run `terraform
+  plan` to confirm nothing changes.
 
-- Copy any existing variables into a file called `variables.tf`. Run `terraform
-  plan` to ensure nothing is set to change.
+- Give every variable a `type` and a `description`, and remove the
+  defaults from the ones that differ between environments.
 
-- Let's ensure that our VPCs don't have overlapping CIDRs. Create a
-  `<workspace-name>.tfvars` file, and define unique CIDRs in each of them. Note
-  that you don't have to specify an item as a variable in a `.tfvars` file. So
-  if you wrote:
+- Add [validation](https://developer.hashicorp.com/terraform/language/validate)
+  so a bad value fails at plan time with a message you wrote. For
+  example:
 
-  ```
+  ```hcl
   variable "vpc_cidr" {
-    type = string
+    type        = string
+    description = "CIDR block for the lab VPC."
+
+    validation {
+      condition     = can(cidrhost(var.vpc_cidr, 0)) && tonumber(split("/", var.vpc_cidr)[1]) <= 24
+      error_message = "vpc_cidr must be a valid IPv4 CIDR block of /24 or larger."
+    }
   }
   ```
 
-  You would put it in the `.tfvars` file as:
+  Add one more rule of your own (for example, that there are at least two
+  AZs, or that an `env` variable is one of `dev` or `prod`). Since
+  Terraform 1.9 a validation can refer to other variables too.
 
+- Create `blue.tfvars` and `green.tfvars` with a unique CIDR in each.
+  A `.tfvars` file only sets values, it doesn't declare them:
+
+  ```hcl
+  vpc_cidr = "10.10.0.0/20"
   ```
-  vpc_cidr = "10.0.0.0/20" # or whatever you have, of course
-  ```
 
-Let's start to automate changes a little more. `terraform plan` lets us
-preview what API calls Terraform is going to make on our behalf. But there's
-no strict guarantee that those are the calls that will be made; the state lock
-is released after a plan, and infrastructure can (and at some point will)
-change between running a `plan` and `apply`.
+  Run `terraform plan -var-file=blue.tfvars` in the `blue` workspace.
+  Then try an invalid CIDR and read the error.
 
-To help get around this risk, terraform lets us _output_ a plan to be executed
-when we run `terraform plan -out <plan_file_name>`. That specific plan (set of
-API calls) can then be executed with `terraform apply <plan_file_name>`
+##### Question: Validation or precondition
 
-In your favorite language, write a build script that:
+_Your validation can check that a CIDR is well formed. Could it check
+that the CIDR doesn't overlap another VPC in the account? What would
+you use instead (look ahead to Lesson 17.5)?_
 
-- Takes a workspace name and either `plan` or `apply` as an argument.
+#### Lab 17.3.3: Saved plans and plan review
 
-- Check for the existence of the `<workspace-name>.tfvars` file, and warn if it
-  does not exist.
+`terraform plan` shows what Terraform would do now. By the time you run
+`terraform apply`, someone may have changed the code or the
+infrastructure, and a plain `apply` plans again. A **saved plan**
+(`terraform plan -out=tfplan`) records exactly what was reviewed, and
+`terraform apply tfplan` applies that and nothing else, refusing if the
+state has changed since. Read the
+[`plan`](https://developer.hashicorp.com/terraform/cli/commands/plan) and
+[`show`](https://developer.hashicorp.com/terraform/cli/commands/show)
+command references.
 
-- Have the `plan` option save a plan file and notify the user the execution plan
-  is available for review.
+In the language of your choice, write a script that:
 
-- Have the apply stage look for a waiting plan file, apply it if it exists, and
-  exit with an error if it does not.
+- takes a workspace name and `plan` or `apply`;
+- selects the workspace and warns if `<workspace>.tfvars` doesn't exist;
+- for `plan`, saves a plan file, prints a human-readable summary with
+  `terraform show`, and writes the machine-readable version with
+  `terraform show -json`;
+- fails the plan step if the JSON plan contains any `delete` action
+  (look at `resource_changes[].change.actions`), unless a flag such as
+  `--allow-destroy` is passed;
+- for `apply`, applies the waiting plan file and exits with an error if
+  there isn't one;
+- archives each applied plan with the time it was applied.
 
-- Have an executed plan file archived in some way, with an approximate
-  execution time recorded as well.
+Then:
 
-Run a plan, make some innocuous changes (add a tag?), save your work, then apply
-the previously-saved plan file. Verify the newest (after-plan) changes were not
-applied. Make a change, run a plan on a different workspace, apply the plan on
-that workspace, and verify your currently selected workspace wasn't affected.
+- Plan `blue`, change a tag in the code, and apply the saved plan.
+  Confirm the tag change wasn't applied.
+- Make a change that replaces a subnet (change its CIDR) and confirm your
+  script stops it.
+- Plan and apply `green`, and confirm `blue` wasn't affected.
+- Try `terraform plan -detailed-exitcode`. What exit code means "no
+  changes", and how would a pipeline use it?
 
-While this obviously isn't robust enough for a full production environment, it
-at least begins to demonstrate _some_ of the care and safeguards that can be
-taken to ensure we know what our IaC tool is going to do.
-
-That brings up something that's very important to note: Terraform does not
-automatically roll back on errors. If you have extensive CloudFormation
-experience, hear it again: _Terraform does not automatically roll back on errors_.
+Note what a failed apply looks like: **Terraform does not roll back.** If
+you know CloudFormation, read that twice. Whatever succeeded before the
+error stays, and is in state; you fix the code and apply again.
 
 ##### Question: CI/CD Pipelines
 
 _Consider how you would use a CI/CD pipeline to roll out infrastructure
 changes. Outside of the pipeline itself, what additional resources would
-you need to write/create?_
+you need to write or create? Where does the plan file live between the
+plan and apply stages, who approves it, and what credentials does each
+stage need?_
 
-#### Lab 17.3.3: Further Network Changes
+#### Lab 17.3.4: Further network changes
 
-Let's make one (or both, your choice) of our subnets public. Edit the code to
-include the necessary resources for a subnet to be public [referring to the
-docs](https://www.terraform.io/docs/providers/aws/r/vpc.html) as necessary.
+Make one or both subnets public: add an internet gateway, a route table
+with a default route to it, and route table associations. Use the
+provider docs for
+[`aws_vpc`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc)
+and the related resources.
 
-- Be sure to add any variables you need to the `variables.tf` file, and include
-  them in any `.tfvars` files you've created as well.
-
-- Once you're happy with the way your code works, clean up your dev network
-  environments with `terraform destroy`.
+- Add any new variables to `variables.tf` and both `.tfvars` files.
+- Plan and apply through your script, in both workspaces.
+- Once you're happy with it, `terraform destroy` in both workspaces (with
+  the right `-var-file`), then `terraform workspace select default` and
+  `terraform workspace delete` each one.
 
 ### Retrospective 17.3
 
 #### Question: View Terraform Plan File
 
-_How do you view the contents of an output Terraform plan file without
-applying it?_
+_How do you view the contents of a saved plan file without applying it?
+The plan file is binary; what's inside it that makes it as sensitive as
+the state?_
 
-## Lesson 17.4: Using Terraform Modules
+## Lesson 17.4: Using Terraform modules
 
 ### Principle 17.4
 
-Terraform Modules are a way to create reusable and repeatable pieces of
-infrastructure code; they can help engineers edit code in fewer places, speed up
-development (nobody wants to write code for a VPC all the time), and ensure
-consistency across environments.
+*A module is a function for infrastructure: inputs, outputs and a
+contract. Write one when it adds a layer of abstraction; pin the version
+of any module you didn't write.*
 
 ### Practice 17.4
 
-#### Lab 17.4.1: Creating and Using a Module
+Every directory of `.tf` files is a module; the one you run `terraform`
+in is the **root module**. Other modules are called with a `module`
+block and can come from a local path, the [Terraform
+Registry](https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws/latest),
+a Git repository or an S3 bucket. Read
+[Modules](https://developer.hashicorp.com/terraform/language/modules) and
+[Module sources](https://developer.hashicorp.com/terraform/language/modules/sources).
 
-So, we now have some code we can use on-demand to create a VPC with at least one
-public subnet. A general answer to the question "should I turn this code into a
-module?" is "Yes, if the code provides an additional layer of abstraction." You
-almost certainly wouldn't want to make a module for a single ec2 instance, for
-example. But a VPC, public subnets, and the associated infra is a perfectly fine
-abstraction layer, and so is a good candidate to be made into a module.
+#### Lab 17.4.1: Creating and using a local module
 
-- Create a `modules` directory in the root of our project; create a
-  `vpc_with_public_subnets` directory within the modules directory. Copy the
-  `main.tf` and `variables.tf` files we've already written to the
-  `vpc_with_public_subnets` directory.
+A VPC with public subnets is a sensible abstraction: callers want "a
+network with these CIDRs", not the eight resource types behind it. A
+single EC2 instance usually isn't.
 
-- Let's provide some outputs about the resources this module creates. Create an
-  `outputs.tf` file, and define outputs for the VPC id and the subnet ids. For
-  example:
+- Create `17-terraform/modules/network`. Copy your `dev/network` code
+  into it, then remove the `backend` and `provider` blocks. A shared
+  module keeps a `terraform` block with `required_providers` (a minimum
+  version, such as `>= 6.0`) but never configures a provider: the caller
+  does.
 
-  ```
-  output "vpc_id" {
-    value = aws_vpc.my_vpc.id # assuming you've named your vpc "my_vpc"
-  }
-  ```
+- Add `outputs.tf` with the VPC ID and the subnet IDs. With `for_each`,
+  the subnet output looks like this:
 
-- The `output` format for the vpc ids will depend largely on how you've created
-  them in your template. If you used `for_each`, it will use a `for` statement
-  and look similar to this:
-
-  ```
+  ```hcl
   output "public_subnet_ids" {
-    value = [for az, s in aws_subnet.public_subnets : s.id]
+    value = [for az, s in aws_subnet.public : s.id]
   }
   ```
 
-- In the `prod/network-infra` directory, create a `main.tf` file; you'll again
-  need to fill out the `terraform` and aws `provider` blocks as before.
+- In `prod/network`, write a `main.tf` with the `terraform` and
+  `provider` blocks (state key `prod/network/terraform.tfstate`) and a
+  `module` block that calls `../../modules/network` with a CIDR that
+  doesn't overlap dev.
 
-- Create a `variables.tf` file in the directory, and populate it with the
-  necessary information your network stack needs. Alternatively, use your build
-  script and the `.tfvars` file.
+- Run `terraform init`, `plan` and `apply` in `prod/network`. Find the
+  module's resources in `terraform state list`; note the
+  `module.<name>.` prefix. Outputs are read as
+  `module.<name>.<output>`.
 
-- Create a `module` block in `main.tf`; you'll need to specify a name for the
-  module (`my_vpc` will do fine), and need to use a local/relative path to point
-  towards the module code.
+#### Lab 17.4.2: A module from the registry
 
-- Once again, from the `prod/network` directory, run `terraform plan` and
-  `terraform apply`.
+- In a scratch directory, call the community
+  [VPC module](https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws/latest)
+  with a version constraint:
 
-Note: to access your module outputs in other modules, you'd use
-`module.<module-name>.<output-name>`.
+  ```hcl
+  module "vpc" {
+    source  = "terraform-aws-modules/vpc/aws"
+    version = "~> 6.0"
 
-#### Lab 17.4.2: Module Versioning
+    name = "stelligent-u-17-<you>-registry"
+    cidr = "10.20.0.0/16"
+    azs  = ["us-east-2a", "us-east-2b"]
+  }
+  ```
 
-Using modules can save a lot of time, but they can also introduce some concerns.
-You're introducing code that you may not control into your infrastructure; even
-outside the possibility of some mistake on the author's part, a module isn't
-guaranteed to never need new input variables or to continue outputting the same
-values. How can we ensure our infra is being built with the code we expect?
+  Add public and private subnets using the module's inputs.
 
-One way is to use a [module
-registry](https://www.terraform.io/docs/registry/index.html) - HashiCorp runs
-one with many open-source modules available to developers; organizations can run
-[their own registry](https://www.terraform.io/docs/registry/private.html) as
-well.
+- Run `terraform init` and look in `.terraform/modules/`. Run `terraform
+  plan` and compare what it would create with your module. Read the
+  module's inputs for NAT gateways: what's the default, and what would
+  turning it on cost?
 
-Another way is to use git refs when specifying the location of the module:
+- Don't apply. Delete the scratch directory.
 
+##### Question: Trusting someone else's module
+
+_What did the registry module do that yours doesn't? What would you
+check before using a community module in production, and what does the
+version constraint protect you from? Does `.terraform.lock.hcl` lock
+module versions?_
+
+#### Lab 17.4.3: Module versioning
+
+A local path always uses whatever is checked out next to it, so every
+caller changes when the module does. To make callers choose when to
+upgrade, publish the module somewhere versioned: a registry (the public
+one or a private one) or Git with a ref.
+
+```hcl
+module "network" {
+  # A subdirectory of a Git repository, pinned to a tag.
+  source = "git::https://github.com/<you>/<your-lab-repo>.git//17-terraform/modules/network?ref=network-v1.0.0"
+
+  vpc_cidr = "10.40.0.0/20"
+}
 ```
-# Github
-source = "github.com/stelligent/my-module?ref=v1.2.3"
 
-# generic git repository
-source = "git::https://some-module-source.com/my-module.git?ref=my-testing-branch"
-```
+The `//` separates the repository from the path inside it. `ref` can be
+a tag, a branch or a commit SHA.
 
-To access a module nested within a source, use a `//` to indicate that the path
-that follows is not part of the repo address:
-
-```
-source = "git::https://some-other-source.com/lots-of-modules.git//modules/vpc?ref=v4.5.6"
-```
-
-This does not work when loading local code; the module version that will be
-checked out is the one that is checked out in your local repo.
-
-You may also specify an S3 URL to check out a zipped module.
-
-- If you're on a fork, commit your module and tag it. Make a small change (again
-  perhaps a tag), specify the tagged ref for the module in your `main.tf`, and
-  confirm the new change won't be deployed when running `terraform apply`.
-
-- Congratulations, we're done! Remember to clean up after yourself - delete
-  everything including the state configuration.
+- Commit your module and tag it `network-v1.0.0`. Push the tag.
+- Point `prod/network` at the tagged Git source and run `terraform init`
+  and `terraform plan`. It should show no changes.
+- Change the module (another tag), commit, and plan again. The change
+  shouldn't appear until you move the `ref`.
 
 ### Retrospective 17.4
 
 #### Question: When to Use Modules
 
-_What are some use cases and when is it appropriate to create a module?_
+_What are some use cases and when is it appropriate to create a module?
+When does a module make code harder to read? How would you release a
+breaking change to a module that other teams call?_
+
+## Lesson 17.5: Guardrails and tests
+
+### Principle 17.5
+
+*Catch the mistake at the cheapest point: a variable validation before
+the plan, a condition during it, a check after it, and a test before any
+of it reaches a real account.*
+
+### Practice 17.5
+
+Terraform has four layers of assertions. Read [Validate your
+configuration](https://developer.hashicorp.com/terraform/language/validate)
+for an overview.
+
+- **Variable validation** (Lab 17.3.2) checks inputs.
+- **Preconditions and postconditions** in a resource, data source or
+  output check assumptions and guarantees, and stop the run when they
+  fail.
+- **`check` blocks** check the infrastructure as a whole and only
+  **warn**; they run on every plan and apply.
+- **`terraform test`** runs your configuration in a test harness,
+  against real infrastructure or a mocked provider.
+
+You'll add each to `modules/network`.
+
+#### Lab 17.5.1: Preconditions and postconditions
+
+Read [Custom
+conditions](https://developer.hashicorp.com/terraform/language/expressions/custom-conditions).
+
+- Add a **precondition** to the subnet resource that fails if there are
+  more AZs than the VPC CIDR has room for.
+- Add a **postcondition** to the VPC that fails if DNS hostnames aren't
+  enabled after apply. Remove `enable_dns_hostnames = true` to watch it
+  fail, then put it back.
+- Add a precondition on an output. When would that be the right place?
+
+##### Question: Which failure, when
+
+_Your precondition refers to a variable, just like a validation could.
+Why is a precondition sometimes the only choice? Which of your
+conditions ran during `plan` and which only during `apply`, and why?_
+
+#### Lab 17.5.2: Check blocks
+
+A `check` block can contain its own **scoped data source**, which
+Terraform reads at the end of every plan and apply. Failures are
+warnings: the run continues, and a scheduled plan surfaces them. That
+makes checks a lightweight way to watch for drift or broken assumptions.
+
+```hcl
+check "vpc_dns" {
+  data "aws_vpc" "live" {
+    id = aws_vpc.this.id
+  }
+
+  assert {
+    condition     = data.aws_vpc.live.enable_dns_support
+    error_message = "DNS resolution is off in ${aws_vpc.this.id}."
+  }
+}
+```
+
+- Add a check like this to your module, apply it in `prod/network`, then
+  turn DNS support off:
+
+  ```bash
+  aws ec2 modify-vpc-attribute --vpc-id <id> --no-enable-dns-support
+  ```
+
+  Run `terraform plan`. What does the check say, and what does the plan
+  propose?
+- Turn it back on.
+
+Read [Checks](https://developer.hashicorp.com/terraform/language/checks).
+
+##### Question: Check or postcondition
+
+_You could have written the DNS assertion as a postcondition on the VPC.
+What's different when it fails? When would you want a warning rather
+than an error?_
+
+#### Lab 17.5.3: terraform test
+
+`terraform test` runs `*.tftest.hcl` files, found in the module's root
+and in a `tests/` directory. Each `run` block plans or applies the
+module with the variables you give it, then evaluates `assert` blocks.
+A run with `command = apply` against the real provider creates real
+resources and destroys them at the end. A **mock provider** replaces
+the provider with one that returns made-up values, so tests need no
+credentials and create nothing. Read
+[Tests](https://developer.hashicorp.com/terraform/language/tests) and
+[Mocks](https://developer.hashicorp.com/terraform/language/tests/mocking).
+
+- Create `modules/network/tests/network.tftest.hcl`. Start from this
+  shape:
+
+  ```hcl
+  mock_provider "aws" {
+    mock_data "aws_vpc" {
+      defaults = {
+        enable_dns_support = true
+      }
+    }
+  }
+
+  variables {
+    vpc_cidr = "10.10.0.0/20"
+  }
+
+  run "subnets_fit_in_the_vpc" {
+    # With a mock provider, "apply" creates nothing real: computed
+    # attributes get fake values, so the check block can be evaluated.
+    command = apply
+
+    assert {
+      condition     = length(aws_subnet.public) == 2
+      error_message = "Expected one subnet per AZ."
+    }
+  }
+
+  run "rejects_a_tiny_vpc" {
+    command = plan
+
+    variables {
+      vpc_cidr = "10.10.0.0/28"
+    }
+
+    expect_failures = [var.vpc_cidr]
+  }
+  ```
+
+  Adjust the resource and variable names to match your module.
+
+- Run `terraform init` and `terraform test` in `modules/network` with
+  no AWS credentials in your shell (`AWS_PROFILE=` and no SSO session).
+
+- Add runs that assert the first subnet's CIDR, that your precondition
+  fires when there are too many AZs (`expect_failures` takes the
+  resource), and that the outputs have the shape a caller expects.
+
+- Try changing the first run to `command = plan`. It fails: the check
+  block's data source depends on the VPC ID, which isn't known until
+  apply. That's why the example uses `apply` under the mock.
+
+- Stretch: write a second test file with no mock provider, using the
+  `lab` profile and `command = apply`. Run it with `terraform test
+  -filter=tests/<file>` and watch it create and destroy a real VPC.
+
+##### Question: Unit or integration
+
+_What did the mocked tests prove, and what couldn't they? Which tests
+would you run on every pull request and which only nightly, and why?
+Where does `terraform test` fit with Terratest or with the CDK's
+`assertions` module from module 25?_
+
+### Retrospective 17.5
+
+#### Question: Where to put the rule
+
+_A teammate wants to enforce "every VPC CIDR is a /20 from 10.0.0.0/8".
+Name the places you could enforce it (a variable validation, a
+precondition, a check, a test, a policy in a pipeline, an SCP) and pick
+one. What does each one miss?_
+
+## Lesson 17.6: Changing what already exists
+
+### Principle 17.6
+
+*Change existing infrastructure the same way you create it: in code, as
+a plan someone can review. Import, rename and forget with blocks, not
+with `terraform state` commands typed at a prompt.*
+
+### Practice 17.6
+
+The CLI commands `terraform import`, `terraform state mv` and
+`terraform state rm` edit state directly, one resource at a time, with
+no plan to review. Since Terraform 1.5 and 1.7, the same operations can
+be written as `import`, `moved` and `removed` blocks, which show up in
+the plan, go through code review and run in a pipeline like any other
+change. Work in a new directory, `17-terraform/adopt`, with the usual
+`terraform`, backend (key `adopt/terraform.tfstate`) and `provider`
+blocks.
+
+#### Lab 17.6.1: Import blocks
+
+- Create a bucket outside Terraform:
+
+  ```bash
+  aws s3api create-bucket --bucket stelligent-u-17-<you>-adopted \
+    --create-bucket-configuration LocationConstraint=us-east-2
+  ```
+
+- Read [Import existing
+  resources](https://developer.hashicorp.com/terraform/language/import)
+  and the [`import` block
+  reference](https://developer.hashicorp.com/terraform/language/block/import).
+  Add an `import` block for the bucket, without writing the resource:
+
+  ```hcl
+  import {
+    to = aws_s3_bucket.adopted
+    id = "stelligent-u-17-<you>-adopted"
+  }
+  ```
+
+- Run `terraform plan -generate-config-out=generated.tf`. Read
+  [Generate configuration for imported
+  resources](https://developer.hashicorp.com/terraform/language/import/generating-configuration):
+  the flag is still marked experimental. Tidy `generated.tf` (remove
+  arguments that are just defaults), move the resource into `main.tf`,
+  and plan again until the plan says `1 to import, 0 to add, 0 to change,
+  0 to destroy`, or explain every change it still wants.
+
+- Apply. Import the bucket's versioning and public access block the same
+  way. Then delete the `import` blocks; they have done their job.
+
+##### Question: Import at scale
+
+_`import` blocks accept `for_each`. How would you adopt twenty buckets
+that follow a naming pattern? How does this compare with CloudFormation
+resource import and the IaC generator in module 01?_
+
+#### Lab 17.6.2: Moved blocks
+
+Terraform identifies a resource by its address. Rename
+`aws_s3_bucket.adopted` to `aws_s3_bucket.logs` and plan: Terraform
+wants to destroy one bucket and create another. A `moved` block tells it
+the object just has a new address.
+
+```hcl
+moved {
+  from = aws_s3_bucket.adopted
+  to   = aws_s3_bucket.logs
+}
+```
+
+- Add the block (and one for each related resource) and plan again. It
+  should show the moves and nothing to create or destroy. Apply.
+- Do the same for a bigger refactor: in `prod/network`, if you created
+  anything outside the module in Lesson 17.4, move it into the module
+  (`to = module.network.aws_...`), or change a resource from `count` to
+  `for_each` (`from = aws_subnet.public[0]`, `to =
+  aws_subnet.public["us-east-2a"]`).
+- Read [Refactoring
+  modules](https://developer.hashicorp.com/terraform/language/modules/develop/refactoring):
+  when can you delete a `moved` block, and why does a shared module keep
+  them for a long time?
+
+#### Lab 17.6.3: Removed blocks and drift
+
+- Stop managing the bucket without deleting it. Delete the resource
+  blocks and add:
+
+  ```hcl
+  removed {
+    from = aws_s3_bucket.logs
+
+    lifecycle {
+      destroy = false
+    }
+  }
+  ```
+
+  Add one for each related resource, plan and apply. Confirm the bucket
+  still exists and `terraform state list` no longer shows it. See the
+  [`removed` block
+  reference](https://developer.hashicorp.com/terraform/language/block/removed).
+
+- **Drift.** In `prod/network`, change a tag on the VPC with the CLI
+  (`aws ec2 create-tags`). Run `terraform plan -refresh-only`: it shows
+  what changed outside Terraform and offers to update the state to
+  match. Then run a normal `terraform plan`: it offers to put the tag
+  back. Decide which is right, and apply it.
+
+##### Question: Refresh-only
+
+_When would you accept drift into state with `terraform apply
+-refresh-only` instead of reverting it? What does this module give you
+for detecting drift on a schedule, compared with CloudFormation drift
+detection or AWS Config (module 26)?_
+
+#### Lab 17.6.4: Clean up the module
+
+Destroy in the reverse order you built, and remove the state bucket
+last, because every other configuration keeps its state in it.
+
+- **Every configuration.** In `prod/network` (and `dev/network` if
+  anything's left in any workspace), run `terraform destroy`. For
+  `dev/network`, `terraform workspace list` first and destroy in each
+  workspace, then delete the workspaces. Run `terraform state list` in
+  each directory afterwards; it should print nothing.
+
+- **Buckets outside Terraform.** Delete the `adopted` bucket you told
+  Terraform to forget: `aws s3 rb s3://stelligent-u-17-<you>-adopted`.
+
+- **Leftovers.** List anything still tagged `topic=17`:
+  `aws resourcegroupstaggingapi get-resources --tag-filters
+  Key=topic,Values=17`. Only the state bucket should remain.
+
+- **The state bucket.** Its own state is inside it, so move that state
+  out first:
+  1. In `state-management`, delete the `backend "s3"` block and run
+     `terraform init -migrate-state`. Answer `yes`; the state is now in
+     a local `terraform.tfstate`.
+  2. The bucket is versioned, so it still holds every old version of
+     every state file, lock file and delete marker. Either set
+     `force_destroy = true` on `aws_s3_bucket` and run `terraform apply`
+     first (the setting only takes effect once it's in state), or empty
+     the bucket yourself: list with `aws s3api list-object-versions` and
+     delete every version **and** delete marker with `aws s3api
+     delete-objects`. `aws s3 rm --recursive` isn't enough: it only adds
+     more delete markers. See [Deleting object
+     versions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html).
+  3. Run `terraform destroy`.
+  4. Confirm with `aws s3api head-bucket --bucket
+     stelligent-u-17-<you>-tfstate`, which should now fail with a 404.
+
+- **Your repository.** Make sure no `terraform.tfstate`,
+  `terraform.tfstate.backup`, plan file or `.terraform/` directory is
+  committed, and delete the local state file from `state-management`.
+
+##### Question: Destroy protection
+
+_Nothing stopped you destroying the state bucket once its state was
+local. What would you add in a real account so that a `terraform
+destroy` in the wrong directory can't remove it? Look at the
+`prevent_destroy` lifecycle argument, bucket policies and module 19's
+SCPs._
+
+### Retrospective 17.6
+
+#### Question: CloudFormation, CDK or Terraform
+
+_Use the table from Practice 17.1. You've now seen all three tools
+import, rename, and fail halfway through a change. For each, what
+happens to the resources and the recorded state when an update fails
+partway? Which behaviour would you want for a database, and which for a
+fleet of DNS records at a third-party provider?_
+
+#### Question: Terraform or OpenTofu
+
+_Your team is starting a new project. What would make you choose
+OpenTofu over Terraform, or the other way round? Consider the licence,
+state encryption, features that exist in only one of them, support, and
+what your CI tooling expects._
 
 ## Further Reading
 
-[Terraform: Up & Running](https://www.terraformupandrunning.com/) - a fantastic
-and comprehensive resource. It's worth a piece of your monthly budget.
-
-[Gruntwork Blog](https://blog.gruntwork.io/) - Engaging and informative articles
-from a team who are Terraform experts.
-
-[Terratest](https://terratest.gruntwork.io/) - Testing for Terraform.
-
-[Terraform Remote State as a Data
-Source](https://www.terraform.io/docs/providers/terraform/d/remote_state.html) -
-it is incredibly useful to be able to access other stack's outputs; this is
-possible cross-region and even cross-provider.
+- [Terraform: Up & Running](https://www.terraformupandrunning.com/), a
+  comprehensive book, and the [Gruntwork blog](https://blog.gruntwork.io/)
+  from the same authors.
+- [Terratest](https://terratest.gruntwork.io/): integration tests for
+  Terraform written in Go, for when `terraform test` isn't enough.
+- [The `terraform_remote_state` data
+  source](https://developer.hashicorp.com/terraform/language/state/remote-state-data):
+  read another configuration's outputs. Read the warning about what it
+  exposes, and consider SSM parameters instead.
+- [Dependency lock
+  file](https://developer.hashicorp.com/terraform/language/files/dependency-lock):
+  what `init -upgrade` changes, and why a lock file created on macOS may
+  need `terraform providers lock` for Linux CI runners.
+- [Enhanced Region
+  support](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/guides/enhanced-region-support)
+  and the [version 6 upgrade
+  guide](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/guides/version-6-upgrade)
+  for the AWS provider.
+- [Migrating to OpenTofu](https://opentofu.org/docs/intro/migration/).
+- The [Terraform 1.11
+  changelog](https://github.com/hashicorp/terraform/blob/v1.11/CHANGELOG.md),
+  which made S3 native locking generally available.
+- The [archived CDK for
+  Terraform](https://github.com/hashicorp/terraform-cdk) repository and
+  its deprecation notice.

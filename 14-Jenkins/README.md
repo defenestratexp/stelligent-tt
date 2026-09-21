@@ -3,455 +3,655 @@
 <!-- TOC -->
 
 - [Topic 14: Jenkins](#topic-14-jenkins)
+  - [What changed in the 2026 edition](#what-changed-in-the-2026-edition)
+  - [Exam coverage](#exam-coverage)
+  - [Cost and cleanup](#cost-and-cleanup)
   - [Guidance](#guidance)
-  - [Lesson 14.1: Introduction to Jenkins](#lesson-141-introduction-to-jenkins)
+  - [Conventions](#conventions)
+  - [Lesson 14.1: A controller nobody can reach](#lesson-141-a-controller-nobody-can-reach)
     - [Principle 14.1](#principle-141)
     - [Practice 14.1](#practice-141)
-      - [Lab 14.1.1: Installation with CloudFormation](#lab-1411-installation-with-cloudformation)
-      - [Lab 14.1.2 - Adding Agents](#lab-1412---adding-agents)
-      - [Lab 14.1.3 - Jenkins Native Tools](#lab-1413---jenkins-native-tools)
-      - [Lab 14.1.4: Logging](#lab-1414-logging)
+      - [Lab 14.1.1: Deploy the controller](#lab-1411-deploy-the-controller)
+      - [Lab 14.1.2: Reach Jenkins through Session Manager](#lab-1412-reach-jenkins-through-session-manager)
+      - [Lab 14.1.3: Ship the Jenkins log to CloudWatch](#lab-1413-ship-the-jenkins-log-to-cloudwatch)
     - [Retrospective 14.1](#retrospective-141)
-      - [Question: Agent Access](#question-agent-access)
-      - [Question: Security](#question-security)
-  - [Lesson 14.2: Plugins](#lesson-142-plugins)
+  - [Lesson 14.2: Configuration as code](#lesson-142-configuration-as-code)
     - [Principle 14.2](#principle-142)
     - [Practice 14.2](#practice-142)
-      - [Lab 14.2.1 - Browsing Plugins](#lab-1421---browsing-plugins)
-      - [Lab 14.2.2 - Automatic Plugin Management](#lab-1422---automatic-plugin-management)
+      - [Lab 14.2.1: Pinned plugins](#lab-1421-pinned-plugins)
+      - [Lab 14.2.2: JCasC replaces the setup wizard](#lab-1422-jcasc-replaces-the-setup-wizard)
+      - [Lab 14.2.3: Matrix-based security](#lab-1423-matrix-based-security)
+      - [Lab 14.2.4: Rebuild from code](#lab-1424-rebuild-from-code)
     - [Retrospective 14.2](#retrospective-142)
-      - [Question: Plugin Management](#question-plugin-management)
-  - [Lesson 14.3: Pipelines](#lesson-143-pipelines)
+  - [Lesson 14.3: Ephemeral agents](#lesson-143-ephemeral-agents)
     - [Principle 14.3](#principle-143)
     - [Practice 14.3](#practice-143)
-      - [Lab 14.3.1: Writing a Pipeline](#lab-1431-writing-a-pipeline)
-        - [Task: Artifact Storage](#task-artifact-storage)
-        - [Task: Build Parameters](#task-build-parameters)
-      - [Lab 14.3.2: Pipeline Reuse](#lab-1432-pipeline-reuse)
+      - [Lab 14.3.1: An EC2 cloud](#lab-1431-an-ec2-cloud)
+      - [Lab 14.3.2: Least privilege for the controller](#lab-1432-least-privilege-for-the-controller)
+      - [Lab 14.3.3: Jenkins native tools](#lab-1433-jenkins-native-tools)
     - [Retrospective 14.3](#retrospective-143)
-      - [Question: AWS Permissions](#question-aws-permissions)
-      - [Question: Build Definition Management](#question-build-definition-management)
-  - [Lesson 14.4: Backup](#lesson-144-backup)
+  - [Lesson 14.4: Pipelines](#lesson-144-pipelines)
     - [Principle 14.4](#principle-144)
     - [Practice 14.4](#practice-144)
-      - [Lab 14.4.1: Backing up the Server](#lab-1441-backing-up-the-server)
+      - [Lab 14.4.1: A declarative Jenkinsfile](#lab-1441-a-declarative-jenkinsfile)
+      - [Lab 14.4.2: Artifacts and parameters](#lab-1442-artifacts-and-parameters)
+      - [Lab 14.4.3: AWS permissions for builds](#lab-1443-aws-permissions-for-builds)
+      - [Lab 14.4.4: Pipeline reuse with a shared library](#lab-1444-pipeline-reuse-with-a-shared-library)
     - [Retrospective 14.4](#retrospective-144)
-      - [Question: Instance Backup](#question-instance-backup)
+  - [Lesson 14.5: Backup and recovery](#lesson-145-backup-and-recovery)
+    - [Principle 14.5](#principle-145)
+    - [Practice 14.5](#practice-145)
+      - [Lab 14.5.1: Scheduled snapshots](#lab-1451-scheduled-snapshots)
+      - [Lab 14.5.2: Restore JENKINS_HOME](#lab-1452-restore-jenkins_home)
+      - [Lab 14.5.3: Clean up the module](#lab-1453-clean-up-the-module)
+    - [Retrospective 14.5](#retrospective-145)
   - [Further Reading](#further-reading)
 
 <!-- /TOC -->
 
+## What changed in the 2026 edition
+
+- **New infrastructure.** The old `base.yaml` opened SSH and ICMP to
+  `0.0.0.0/0`, had a malformed network ACL, left out the instance type and
+  hard-coded AMI IDs. The new one runs the controller on Amazon Linux 2023
+  from the SSM public parameter, requires IMDSv2, has **no inbound rules**,
+  and binds Jenkins to `127.0.0.1`. You reach the UI with Session Manager
+  port forwarding, not an Elastic IP.
+- **Java 21.** Since LTS 2.555.1 (April 2026) Jenkins needs Java 21 or 25 on
+  the controller *and* on agents; Java 17 is no longer supported. The LTS
+  line in September 2026 is 2.568.x. The old labs used OpenJDK 8, Ubuntu
+  18.04 and the original Amazon Linux AMI, all end of life.
+- **Configuration as code.** The 2022 text called Jenkins Configuration as
+  Code (JCasC) "not recommended". It is now the normal way to run Jenkins:
+  plugins pinned in `plugins.txt`, installed by the plugin installation
+  manager tool, and system configuration in JCasC YAML kept in Git.
+- **Ephemeral agents with no stored AWS keys.** Two hand-registered static
+  agents are replaced by the EC2 plugin, which launches an agent per build
+  using the controller's **instance role** and terminates it afterwards. The
+  controller's IAM policy only lets it launch and terminate instances tagged
+  with its own cloud name.
+- **Builds get AWS permissions from the agent's role**, and artifacts go to
+  S3 through Artifact Manager on S3, which also uses the instance role.
+- **Pipelines are declarative Jenkinsfiles.** The Freestyle "team A" job is
+  gone; reuse is taught with a shared library.
+- **Backup** uses scheduled EBS snapshots and a root-volume replacement
+  instead of hand-made snapshots and a rebuilt instance.
+- Jenkins now says **controller** and **agent**; the links moved from the
+  retired wiki to jenkins.io. The sample Java app targets Java 21 with JUnit
+  Jupiter and current Maven plugins.
+- Labs run in the lab account in `us-east-2` with the `lab` profile.
+
+## Exam coverage
+
+| Exam | Domain / task statement |
+|---|---|
+| DOP-C02 | Domain 1: SDLC Automation (Task 1.1: implement CI/CD pipelines; Task 1.2: integrate automated testing into pipelines; Task 1.3: build and manage artifacts) |
+| DOP-C02 | Domain 2: Configuration Management and IaC (Task 2.1: define cloud infrastructure and reusable components to provision and manage systems throughout their lifecycle) |
+| DOP-C02 | Domain 3: Resilient Cloud Solutions (Task 3.3: implement automated recovery processes to meet RTO and RPO requirements) |
+| DOP-C02 | Domain 4: Monitoring and Logging (Task 4.1: configure the collection, aggregation and storage of logs and metrics) |
+| DOP-C02 | Domain 6: Security and Compliance (Task 6.1: implement techniques for identity and access management at scale; Task 6.2: apply automation for security controls and data protection) |
+
+## Cost and cleanup
+
+- **The controller** is a `t3.medium` (about $0.042 an hour, roughly $1 a
+  day) with a 30 GiB gp3 root volume (about $2.40 a month, billed while the
+  volume exists, even with the instance stopped).
+- **Agents** are `t3.small` (about $0.021 an hour) and exist only while a
+  build runs plus the idle timeout you set. An agent left behind by a
+  deleted controller keeps billing, so the cleanup lab checks for strays.
+- **Public IPv4 addresses** cost $0.005 an hour each: one for the
+  controller, one per running agent. That is still far cheaper than a NAT
+  gateway.
+- **Small charges:** one Secrets Manager secret ($0.40 a month, prorated),
+  S3 storage for configuration and artifacts (artifacts expire after 30
+  days), CloudWatch Logs ingestion and storage, and EBS snapshots (about
+  $0.05 per GB-month) from Lesson 14.5.
+- Stop the controller between sessions (`aws ec2 stop-instances`) or
+  delete the stack. Everything except build history can be rebuilt from
+  your repository; that is the point of Lesson 14.2.
+- **Cleanup:** [Lab 14.5.3](#lab-1453-clean-up-the-module) terminates stray
+  agents, empties the bucket, deletes the stacks, snapshots and log group.
+
 ## Guidance
 
-- Do NOT copy and paste from the Internet at large
-- DO use the [Jenkins documentation](https://jenkins.io)
-- DO utilize the [Plugin index](https://plugins.jenkins.io/) to determine
-  if there is a community provided solution available.
-- Only specify the minimum configuration required for your Jenkins
-  architecture and plugins. Don't get completely lost in all the options
-  you can add.
+- Explore the official docs! See the
+  [Jenkins User Handbook](https://www.jenkins.io/doc/book/), the
+  [Pipeline syntax reference](https://www.jenkins.io/doc/book/pipeline/syntax/),
+  the [plugin index](https://plugins.jenkins.io/) and, on the AWS side, the
+  [Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html)
+  and
+  [CloudFormation template reference](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/introduction.html)
+  docs.
+- A plugin's own page and README are its documentation. Read the
+  configuration-as-code examples there, then confirm key names on your
+  controller under **Manage Jenkins > Configuration as Code >
+  Documentation**.
+- Avoid copying Jenkins setups from blog posts: most still use Java 11 or
+  17, `master`, open port 8080 and access keys stored in Jenkins.
+- Only configure what your architecture needs. Jenkins has thousands of
+  options; you don't need most of them.
 
-## Lesson 14.1: Introduction to Jenkins
+## Conventions
+
+- **Profile and Region.** Everything runs in the lab account with the `lab`
+  profile, in `us-east-2`. CLI examples don't pass `--region`.
+- **Names.** `<you>` is your identifier and the stack's `StudentId`
+  parameter. Name your stack `<you>-jenkins`.
+- **Placeholders.** Examples use `123456789012` for the account ID and
+  `i-0123456789abcdef0` for an instance. Don't commit your real account ID.
+- **Your repository.** Copy `base.yaml`, `jenkins/` and `my-app/` from this
+  directory into your lab repository and work there. `jenkins/` is what you
+  upload to the bucket; `my-app/` is what your pipeline builds.
+- **Session Manager plugin.** You installed it in module 05; check it with
+  `session-manager-plugin --version`.
+
+## Lesson 14.1: A controller nobody can reach
 
 ### Principle 14.1
 
-*Jenkins is a leading open source automation server, providing thousands
-of plugins to support building, deploying and automating any project.*
+*A Jenkins controller can run anything on anything it is connected to, so
+treat it as a production system: no port open to the internet, access
+granted by IAM, and a log you can read without logging in.*
 
 ### Practice 14.1
 
-Let's start off by [creating the Jenkins infrastructure](https://aws.amazon.com/getting-started/projects/setup-jenkins-build-server/).
+Jenkins is an open-source automation server; the **controller** schedules
+work and keeps configuration and history, and **agents** run the builds.
+`base.yaml` builds the controller host for you: an Amazon Linux 2023
+instance with Java 21 and the current Jenkins LTS from the Jenkins RPM
+repository, plus the roles, security groups, key pair, secret and bucket
+the later lessons use. Read it before you deploy it; every lab in this
+module changes something in it or in `jenkins/`.
 
-#### Lab 14.1.1: Creating the Infrastructure with CloudFormation
+#### Lab 14.1.1: Deploy the controller
 
-Jenkins, operating as a CI/CD server, can be hosted on-premise with a
-dedicated machine or hosted [in the cloud](https://d1.awsstatic.com/Projects/P5505030/aws-project_Jenkins-build-server.pdf).
-For ease of deployment and scalability, we will provision a Jenkins
-environment using CloudFormation templates on the AWS platform. In order
-to do this you will need the following:
+- Read `base.yaml` and answer for yourself: what can reach the controller,
+  what can the controller reach, and what does its role allow? Find where
+  the Jenkins package repository comes from, and what the systemd drop-in
+  under `/etc/systemd/system/jenkins.service.d/` sets.
+- Deploy it into a public subnet of the default VPC (or your module 04
+  VPC) with `aws cloudformation deploy`, parameters from `base-params.json`
+  or `--parameter-overrides`, and `--capabilities CAPABILITY_IAM`.
+- The stack waits for the instance's `cfn-signal`. If it fails, start a
+  Session Manager shell and read `/var/log/cfn-init.log` and
+  `/var/log/cfn-init-cmd.log` before you delete anything.
 
-- EC2 Instance (as the Jenkins Server) -- use the Amazon Linux AMI with JDK installed
-  - EIP, for the instance to receive traffic
-- Subnet, containing the Jenkins master instance
-  - Route Table, for communication with users
-  - Internet Gateway, allowing inbound and outbound traffic
-- VPC, containing the subnet
-- Security Group, to allow incoming WEB and SSH access **to your IP only**
+##### Question: Where is the internet?
 
-You may work off of the provided `base.yaml` template.
+_The controller has a public IPv4 address but its security group has no
+inbound rules. What can a scanner on the internet do with that address?
+Why does the template use a public address at all instead of a private
+subnet, and what would a private subnet need instead?_
 
-Once you have created the CloudFormation template, launch it and navigate
-to the Jenkins instance when complete. Install Jenkins on the EC2 instance,
-and starting the service. Finally, following the admin install wizard by
-navigating to the instance IP at the correct port. Verify that Jenkins is
-set up and ready for use by ensuring the "Welcome to Jenkins!" prompt is
-present and you can:
+#### Lab 14.1.2: Reach Jenkins through Session Manager
 
-- Add a "New Item"
-- Browse "People"
-- View "Build History"
-- "Manage Jenkins"
-- Manage "Credentials"
-- View "My Views"
+- Start a port-forwarding session to the controller with the
+  `AWS-StartPortForwardingSession` document (the stack's
+  `PortForwardCommand` output) and open `http://localhost:8080/`. See
+  [Start a session](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-sessions-start.html),
+  section on port forwarding.
+- Jenkins shows **Unlock Jenkins**. Read the initial admin password from
+  `/var/lib/jenkins/secrets/initialAdminPassword` with a Session Manager
+  shell, not SSH.
+- Finish the setup wizard with **no** plugins selected and look around:
+  **Manage Jenkins**, **Nodes**, **Credentials**, **Security**. Don't
+  configure anything yet; Lesson 14.2 throws this state away.
+- On the instance, run `ss -tlnp | grep 8080`. Which address is Jenkins
+  listening on, and where is that set?
 
-#### Lab 14.1.2 - Adding Agents
+##### Question: Port forwarding and the listen address
 
-As it stands, the Jenkins server can be used to execute jobs. Executing jobs
-in this manner, however, is not ideal due to scalability, management, or
-performance. This is where agents come into play.
+_Jenkins listens on `127.0.0.1`. Why does port forwarding still work? What
+else, besides the missing inbound rule, now stops another instance in the
+VPC from reaching the UI?_
 
-Jenkins uses the master-agent [distributed architecture](https://wiki.jenkins.io/display/JENKINS/Distributed+builds),
-which makes the master server responsible for scheduling, dispatching,
-monitoring, and history aggregation for jobs. The worker nodes meanwhile,
-are responsible for fulfilling requests from the master with their
-specialized configurations (OS, programs, tools, etc).
+#### Lab 14.1.3: Ship the Jenkins log to CloudWatch
 
-To take advantage of this architecture, we will update our CloudFormation
-template to add these agents. Update the template to add the following
-instances into your VPC:
+The Jenkins package runs under systemd and logs to the journal by default
+(see the commented `JENKINS_LOG` line in the unit file,
+`systemctl cat jenkins`).
 
-- 1 EC2 T2 Small instance with the latest Ubuntu 18.04 AMI
-- 1 EC2 T2 Micro instance with the latest Amazon Linux AMI
-  (containing OpenJDK 8)
+- In `base.yaml`, set `JENKINS_LOG` in the drop-in so Jenkins also writes
+  `/var/log/jenkins/jenkins.log`, and make sure the `jenkins` user can
+  write that directory.
+- Install and configure the
+  [CloudWatch agent](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/install-CloudWatch-Agent-on-EC2-Instance.html)
+  through cfn-init to ship that file to a log group `/<you>/jenkins` that
+  the template creates with a 7-day retention.
+- Give the controller role only the permissions the agent needs for that
+  log group (the TODO in `ControllerRole`).
+- Update the stack and follow the log with `aws logs tail --follow`.
+  Restart Jenkins and watch it start.
 
-You may use a [Launch Template](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-launchtemplate.html)
-to reduce redundant configurations. Also, make sure these instances can
-communicate with the master Jenkins server:
+##### Question: One log for everything
 
-- default 8080 inbound SG rule on Jenkins server (for handling requests)
-- default 50000 inbound SG rule on Jenkins server (for JNLP)
-- default 8080 outbound SG rule on Agent
-- default 50000 outbound SG rule on Agent
-
-Update the existing stack to add these new resources. By default, these
-EC2 instance will not be capable of registering with the master server.
-In order to do that, the agent service must be installed by retrieving
-them from the master server, and then starting the service on the agent
-instances.
-
-To do this, the process would require 2 steps.
-
-1. Creation of a new node from "Manage Jenkins" > "Manage Nodes"
-1. Retrieval and starting of the agent java service
-  (See ["Different ways of starting agents"](https://wiki.jenkins.io/display/JENKINS/Distributed+builds)
-  section)
-
-  _Note: An alternative method allowing agents to automatically discover
-  and register with the master server is achieved using the [Swarm Plugin](https://wiki.jenkins.io/display/JENKINS/Swarm+Plugin)._
-
-#### Lab 14.1.3 - Jenkins Native Tools
-
-Now that Jenkins is configured in the proper manner, you may begin
-exploring the facilities that it offers. Out of the box, it is pretty
-basic but there are a few things you should be aware of and why/when to
-use them.
-
-- [Script console](https://wiki.jenkins.io/display/JENKINS/Jenkins+Script+Console)
-  for execution of commands on machines
-- [Command line params](https://wiki.jenkins.io/display/JENKINS/Starting+and+Accessing+Jenkins)
-  when running the Jenkins from the CLI
-- [Administration](https://wiki.jenkins.io/display/JENKINS/Administering+Jenkins)
-  overview
-- [Remote access API](https://wiki.jenkins.io/display/JENKINS/Remote+access+API)
-  submitting
-- [Logging](https://wiki.jenkins.io/display/JENKINS/Logging)
-- Plugins (discussed next)
-
-#### Lab 14.1.4: Logging
-
-Out of the box, Jenkins has no integrated way of forwarding logs to AWS.
-One common way to do this the [Cloudwatch Agent](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Install-CloudWatch-Agent.html).
-Since all worker nodes logs are managed by the master server, the
-Cloudwatch Agent only needs to be installed on the master server. With the
-Cloudwatch Agent, storing log data in cloudwatch works in near-real time,
-and can be extended with Cloudwatch metrics to send alarms in response to
-certain events.
-
-Going back to your CloudFormation template, extend it to install the
-Cloudwatch Agent and monitor logs at `/var/log/jenkins/jenkins.log`
-
-When you have finished, relaunch the CloudFormation template and check that
-logs can be found inside Cloudwatch.
+_Build logs from agents appear in the Jenkins UI. Are they in the file you
+just shipped? Where does Jenkins keep them, and what would you do if an
+auditor wanted build logs kept for a year?_
 
 ### Retrospective 14.1
 
-#### Question: Agent Access
+#### Question: Agent access
 
-_Can you access the agent machine directly? Taking the distributed
-architecture in account, is this preferable?_
+_Agents accept SSH, but only from the controller's security group. Is that
+an exception to "no inbound SSH"? What would you need to change to remove
+it?_
 
-#### Question: Security
+#### Question: A load balancer instead
 
-_How secure is your Jenkins environment? What measures can be taken to
-increase security from the Jenkins configuration side (*hint:*,
-authentication & authorization)  as well as with the infrastructure
-resources (*hint:* security groups, NACL, WAF, Inspector)?_
+_A team of fifty can't all run port-forwarding sessions. Sketch the
+alternative: an Application Load Balancer with an ACM certificate,
+authentication at the listener (OIDC or Amazon Cognito) and AWS WAF, with
+the controller in a private subnet. Which security group rules, Jenkins
+settings (listen address, Jenkins URL) and costs change? How do GitHub
+webhooks reach Jenkins in each design?_
 
-## Lesson 14.2: Plugins
+## Lesson 14.2: Configuration as code
 
 ### Principle 14.2
 
-*There are thousands of Jenkins plugins to support building, deploying
-and automating any project.*
+*If you can't rebuild your Jenkins controller from a Git repository, you
+don't have a Jenkins controller, you have a pet.*
 
 ### Practice 14.2
 
-#### Lab 14.2.1 - Browsing Plugins
+Plugins are where Jenkins gets almost all of its features, and where most
+of its security advisories come from. Configuration made by clicking is
+invisible in review and lost with the instance. In this lesson you pin the
+plugins, describe the system in YAML, and prove you can rebuild the
+controller from that alone.
 
-Plugins are a critical component of working with Jenkins since by default,
-only basic functionality is available out-the-box. Depending on the
-capabilities you need, it is best to check the available plugins. For
-example, plugins are offered for features such as:
+The loop is always the same:
 
-- Git integration
-- Secure credential storage
-- Matrix based security
-- Backups
-- Test report generation
-- EC2 as agent support
-- Improved Jenkins interface with Blue Ocean
+1. Edit `jenkins/plugins.txt` or `jenkins/casc/*.yaml` in your repository.
+2. `aws s3 sync jenkins/ s3://<bucket>/jenkins/ --delete`
+3. Run `/usr/local/sbin/jenkins-apply-config` on the controller with
+   [Run Command](https://docs.aws.amazon.com/systems-manager/latest/userguide/running-commands.html)
+   (`AWS-RunShellScript`) and read its output with
+   `aws ssm get-command-invocation`.
 
-Let's get familiar with what is offered by browsing the [plugin index](https://plugins.jenkins.io/).
+The same script runs at boot, so a new controller comes up configured.
 
-After you have finished understanding the common categories of plugins,
-add 2 plugins to the Jenkins server:
+#### Lab 14.2.1: Pinned plugins
 
-- 1 for git integration
-- 1 for matrix based security
+- Browse the [plugin index](https://plugins.jenkins.io/). For each plugin
+  in the starter `plugins.txt`, find what it does, its current version, its
+  health score and whether it has open security warnings.
+- Read the README of the
+  [plugin installation manager tool](https://github.com/jenkinsci/plugin-installation-manager-tool),
+  particularly the `--latest` option and version pinning.
+- Upload the starter and apply it. Then list the installed plugins
+  (`ls /var/lib/jenkins/plugins`, or **Manage Jenkins > Plugins**).
 
-For the matrix based security plugin, add another jenkins user and have
-them restricted to read only access.
+##### Question: Pinned, but only at the top
 
-#### Lab 14.2.2 - Automatic Plugin Management
+_You pinned four plugins; how many were installed? What decided the
+versions of the others, and what would you do to make the whole set
+reproducible? What is the trade-off between pinned versions and security
+fixes?_
 
-Plugin installation is often a manual process where features are selected
-as needed. There are several ways to introduce repeatability and
-management of plugins, they include:
+#### Lab 14.2.2: JCasC replaces the setup wizard
 
-- [Jenkins client cli tool](https://jenkins.io/doc/book/managing/plugins/)
-- [install-plugins.sh for Jenkins on Docker](https://github.com/jenkinsci/docker/blob/master/install-plugins.sh)
-- [Ansible playbook](https://docs.ansible.com/ansible/latest/modules/jenkins_plugin_module.html)
-- [Jenkins Configuration as Code (JCasC) Plugin](https://github.com/jenkinsci/configuration-as-code-plugin/)
-  (Not recommended as not all plugins can be installed & configured -- many
-  features are still in development)
+- Read the
+  [Configuration as Code](https://www.jenkins.io/doc/book/managing/casc/)
+  handbook page and the plugin's
+  [secrets documentation](https://github.com/jenkinsci/configuration-as-code-plugin/blob/master/docs/features/secrets.adoc).
+- Read `jenkins/casc/jenkins.yaml`. Work out where each `${...}` value
+  comes from: an environment variable from the drop-in, or a file that
+  `jenkins-apply-config` fetched from Parameter Store or Secrets Manager.
+- In `base.yaml`, add the system property that skips the setup wizard to
+  `JAVA_OPTS` in the drop-in. Update the stack, upload the starter JCasC
+  file and apply.
+- Log in as `admin` with the password from Secrets Manager (the stack's
+  `AdminPasswordSecretArn` output). Check **Manage Jenkins > Configuration
+  as Code > View Configuration**.
+- Change the system message in the UI, then apply again. What happened to
+  your change?
 
-Keep in mind that with plugins installation, there is a need to consider
-version management. 'Latest' versions may break/deprecate existing
-functionality, while older versions may contain security vulnerabilities.
-Thus it is important to understand when/where that tradeoff should be made.
+##### Question: Secrets in configuration
 
-Explore the applicable plugin installation methods above and note the
-limitations and tradeoffs of each one.
+_The admin password and the agents' SSH key reach Jenkins through files
+written at boot. Where else could JCasC get them (look at the secret
+sources the plugin supports), and what would each option change about the
+controller's IAM policy and what sits on its disk?_
+
+#### Lab 14.2.3: Matrix-based security
+
+- Add the [Matrix Authorization Strategy](https://plugins.jenkins.io/matrix-auth/)
+  plugin to `plugins.txt`, pinned.
+- In JCasC, replace `loggedInUsersCanDoAnything` with a global matrix: the
+  admin has `Overall/Administer`, and a second user `<you>-viewer` can only
+  read jobs and builds. Store the viewer's password the same way as the
+  admin's.
+- Log in as the viewer in a private browser window and confirm what it
+  can't do.
+
+##### Question: Who else is an administrator?
+
+_Name two other ways, outside the Jenkins permission matrix, that someone
+could become effectively an administrator of this controller. Consider IAM
+and the Session Manager permissions you gave yourself, and who can change
+a Jenkinsfile._
+
+#### Lab 14.2.4: Rebuild from code
+
+- Deploy a second copy of the stack from the same files, as
+  `<you>-jenkins-b` with `StudentId` `<you>-b`, upload the same `jenkins/`
+  directory to its bucket and let it boot.
+- Compare the two controllers. List what is the same and what is missing
+  on the new one.
+- Delete the second stack (empty its bucket first).
+
+##### Question: What is still a pet?
+
+_What was missing on the rebuilt controller? Which of it should be in code
+(hint: jobs, and who maintains the plugin that would define them), and
+which of it is data you have to back up instead (Lesson 14.5)?_
 
 ### Retrospective 14.2
 
-#### Question: Plugin Management
+#### Question: Plugin management
 
-_Considering the many options for plugin management, which makes the most
-sense for our current Jenkins infrastructure?_
+_Compare four ways to manage plugins: clicking in the UI, `plugins.txt`
+with the plugin installation manager tool, a custom container image built
+`FROM jenkins/jenkins:lts-jdk21`, and a golden AMI built with EC2 Image
+Builder (module 20). Which suits this controller, and which would you pick
+for twenty teams?_
 
-## Lesson 14.3: Pipelines
+## Lesson 14.3: Ephemeral agents
 
 ### Principle 14.3
 
-*[A Pipeline is a user-defined model of a CD pipeline](https://jenkins.io/doc/book/pipeline/)*
+*Build agents should be cattle: created for a build, given only the
+permissions that build needs, and destroyed afterwards.*
 
 ### Practice 14.3
 
-With a functional understanding of Jenkins, let's finally write a Pipeline
-to perform work.
+A static agent collects state between builds (files in the workspace,
+credentials, installed tools) and costs money while idle. The
+[EC2 plugin](https://plugins.jenkins.io/ec2/) launches an instance when a
+build needs a label, connects to it over SSH from the controller, and
+terminates it when it has been idle long enough or has run its quota of
+builds. The plugin calls EC2 with the controller's instance role, so there
+are no AWS keys in Jenkins.
 
-Pipelines can be written in 3 ways:
+#### Lab 14.3.1: An EC2 cloud
 
-- [Scripted Pipeline Job](https://jenkins.io/doc/book/pipeline/syntax/#scripted-pipeline)
-  - This is the traditional manner for creating Pipelines. The syntax is
-    strictly Groovy and allows for advanced control flows (loops, conditions, etc)
-    not available in the Declarative syntax.
-- [Declarative Pipeline Job](https://jenkins.io/doc/book/pipeline/syntax/#declarative-pipeline)
-  - This is the newer standard for creating Pipelines. The aim in using
-    the declarative style of writing pipelines, is for readability and
-    ease of use.
-- Freestyle Job
-  - As the name suggests, allows freestyle (manual) creation of a
-    workflow. There is no Jenkinsfile involved. This is a good way
-    to get familiar with writing pipelines and there are
-    [plugins capable of converting a freestyle job to a true Jenkins pipeline](https://jenkins.io/blog/2017/12/15/auto-convert-freestyle-jenkins-jobs-to-coded-pipeline/)
+- Finish the `amazonEC2` cloud in `jenkins/casc/jenkins.yaml`. Use the
+  plugin's page and **Manage Jenkins > Configuration as Code >
+  Documentation** to find the keys for:
+  - connecting over the agent's **private IP** and giving it a **public
+    IP** (the agent needs outbound HTTPS, and there is no NAT gateway);
+  - IMDSv2 required, hop limit 1;
+  - host key verification that doesn't blindly accept any key;
+  - an init script that installs Java 21 (`java-21-amazon-corretto-headless`)
+    and Git, because agents need the same Java as the controller;
+  - an idle timeout, an instance cap of 2, and **one build per agent**.
+- Apply, then create a Pipeline job in the UI whose script needs the
+  `al2023` label and runs `java -version` and `aws sts get-caller-identity`.
+- Watch the agent appear and disappear:
+  `aws ec2 describe-instances --filters Name=tag:jenkins_cloud_name,Values=<you>-agents`.
+  Read the agent's launch log in **Manage Jenkins > Nodes**.
 
- In general we will use either the Declarative or Scripted syntax in a
- `Jenkinsfile`. In practice, it is common to see a mixed use of both
- syntax styles inside a Jenkinsfile -- and the differences between the
- 2 are not substantial. That is, a pipeline will start off in the
- Declarative manner, and remain so until a need arises to perform some
- programmatic logic. The programmatic logic using scripted syntax will
- exist within a `script` block.
+##### Question: Whose identity?
 
-#### Lab 14.3.1: Writing a Pipeline
+_Which role did `aws sts get-caller-identity` report, the controller's or
+the agent's? Why is that the one you want?_
 
-Using the ['Pipeline Syntax'](https://jenkins.io/doc/book/pipeline/syntax)
-and the ['Using a Jenkinsfile'](https://jenkins.io/doc/book/pipeline/jenkinsfile/)
-pages, create a pipeline using the Declarative syntax with 2 [stages](https://jenkins.io/doc/book/pipeline/syntax/#stages).
+##### Question: How long did you wait?
 
-1. Git checkout of the master branch of your git forked repo (or another)
-  _(use the Ubuntu instance as the agent to execute this stage)_
-1. `mvn clean validate compile test package` of the root Java project source "`my-app`"
-  _(use the Linux instance as the agent to execute this stage)_
+_How long did the build wait for its agent? Which settings trade that wait
+for cost (spare instances, idle time, instance type, a pre-baked AMI), and
+what would you choose for a team that builds every few minutes?_
 
-Following the mvn execution, store the Java `target` artifacts as job
-output.
+#### Lab 14.3.2: Least privilege for the controller
 
-After you have made the Jenkinsfile, ensure you have git configured in
-Jenkins to start a build (using polling or hook) from your repo before
-committing and pushing. When you are ready, commit and push.
+- Compare the `ec2-plugin-agents` policy in `base.yaml` with the policy on
+  the EC2 plugin's page. For every difference, say why it is safe to leave
+  out or narrow. Use the
+  [EC2 example policies](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ExamplePolicies_EC2.html)
+  to understand the tag conditions.
+- Break it on purpose: change the cloud's `name` in JCasC to anything other
+  than `${AGENT_CLOUD_NAME}`, apply, and start a build. Find the error in the
+  Jenkins log, decode the message with `aws sts
+  decode-authorization-message`, and restore the name.
+- Find the matching `RunInstances` event in CloudTrail event history.
+  <!-- VERIFY: an end-to-end run with this trimmed policy (launch, tag,
+  connect, terminate) with EC2 plugin 2064.x; it was built from the plugin
+  source, not from a live test. -->
 
-Did your pipeline run as expected (It may take a minute depending on the
-change detection configuration)? If not, you can manually trigger a scan
-on your sources to start the pipeline build for projects with new changes
-detected.
+##### Question: A compromised controller
 
-**Note:** *For debugging, it is possible to edit the Pipeline seen from the
-last build using the job [Replay](https://jenkins.io/doc/book/pipeline/development/#replay)
-feature. Doing so allows you ignore the Jenkinsfile in source control, and
-use the edited one instead ([build parameters](https://wiki.jenkins.io/display/JENKINS/Parameterized+Build)
-of the last build can not be changed however). Because users can execute
-arbitrary code in place of the pipelines Jenkinsfile, it is recommended to
-control use of this feature*
+_Someone gets the script console on this controller. With this role, what
+can they do in the account? What could they have done with the policy from
+the plugin page, which allows `iam:PassRole` on `*`?_
 
-##### Task: Artifact Storage
+#### Lab 14.3.3: Jenkins native tools
 
-After creating and running your pipeline were you able to access the build
-artifacts? Storing build artifacts for a pipeline is an important step when
-crafting workflows because build artifacts can be referenced in other
-pipelines. Since they persist as long as the Jenkins server has them on disk,
-it is important to archive them in a separate artifact manager (Artifactory,
-S3, Nexus, npm, Ruby Gems, etc).
+- Add a Maven installation under `tool:` in JCasC that installs a current
+  Maven 3.9 release automatically; it is installed on each agent at first
+  use. See [Managing tools](https://www.jenkins.io/doc/book/managing/tools/).
+- Read about the
+  [script console](https://www.jenkins.io/doc/book/managing/script-console/),
+  the [Jenkins CLI](https://www.jenkins.io/doc/book/managing/cli/) and the
+  [remote access API](https://www.jenkins.io/doc/book/using/remote-access-api/).
+  Use the CLI or the API (through your port-forwarding session, with an API
+  token) to list jobs and trigger a build.
 
-Because we have no way of accessing build artifacts from a build, edit the
-Jenkinsfile to provide artifact upload capability to an S3 bucket using a
-plugin.
+##### Question: The most powerful page
 
-##### Task: Build Parameters
-
-When user defined data needs to be passed in to your job, build parameters
-can be used, thus making the build a [Parameterized Build](https://wiki.jenkins.io/display/JENKINS/Parameterized+Build).
-Default values can be used for the parameters and a variety of parameter
-types can be passed, common ones include:
-
-- Boolean
-- Choice (single option)
-- Credentials
-- String
-- File
-- Password
-
-Edit the Jenkinsfile to provide a String, Choice, and Boolean parameter
-of your naming.
-
-Call these in a new stage to verify you can act on these values.
-
-#### Lab 14.3.2: Pipeline Reuse
-
-In real world applications, teams will have their own Jenkinsfile
-representing their CI/CD process. To follow this exercise, we will
-manually create a new Freestyle job that mirrors the same steps
-outlined in your Jenkinsfile pipeline. Although the steps are the same,
-we will recognize the Freestyle job as belonging to team A. While our
-Jenkinsfile is a pipeline belonging to team B.
-
-If another team comes along and needs makes a pipeline, it is likely
-that they will copy an existing Jenkinsfile, or manually create a
-Freestyle job in the same manner. Depending on how the teams are managed,
-this may become hard to maintain. To avoid this and allow common CI
-functionality to be reused, we need to introduce a [Shared Library](https://jenkins.io/doc/book/pipeline/shared-libraries/).
-
-A shared library can be available globally (to all Jenkins projects)
-or at the project level. The shared library in essence consists of files
-containing code which can be used (via imports) in Pipelines (`Jenkinsfile`).
-
-Let's add a shared library to the your repo and configure Jenkins to point
-to it.
-
-In your shared repo define a method `mvnBuild.groovy` which echos
-environment variable information using a simple command `env` and then
-executes a java maven build with `mvn clean validate compile test`. The
-method does not need to accept any string arguments.
-
-Make this new function available as a global library (Manage Jenkins
-Setting) and update your Jenkinsfile pipeline to call this function in
-place of the existing `mvn` step.
-
-Ensure this new method is called by reviewing the build logs for your job.
-
-**Note:** Shared libraries are not only capable of encapsulating step level
-code, but can even be be [used to execute multiple stage blocks -- and even
-an entire pipeline](https://jenkins.io/blog/2017/10/02/pipeline-templates-with-shared-libraries/).
-This makes it preferable to use when standardizing pipelines.
+_Why is the script console as powerful as a root shell on the controller?
+Who should have it, and how does that relate to the JCasC approach of not
+changing things by hand?_
 
 ### Retrospective 14.3
 
-#### Question: AWS Permissions
+#### Question: Other ways to get agents
 
-_What would happen if in your pipeline, you needed to run AWS specific
-commands on an agent? Why wouldn't the commands work?_
+_Compare the EC2 plugin with the EC2 Fleet plugin (an Auto Scaling group or
+Spot Fleet as the pool), the Kubernetes plugin on EKS (module 15), and
+running builds in AWS CodeBuild (module 12). What does each need on the
+network, in IAM and in the controller?_
 
-#### Question: Build Definition Management
-
-_Build definitions are typically stored in the same repository of the
-project that will be built. When there are many projects, how could
-management of the many build definitions be handled to provide for better
-centralization and restricted control to a dedicated administration team?_
-
-## Lesson 14.4: Backup
+## Lesson 14.4: Pipelines
 
 ### Principle 14.4
 
-*Anything that can go wrong will go wrong - Murphys Law.*
+*[A Pipeline is a user-defined model of a CD pipeline](https://www.jenkins.io/doc/book/pipeline/),
+and it belongs in the repository next to the code it builds.*
 
 ### Practice 14.4
 
-#### Lab 14.4.1: Backing up the Server
+Pipelines are written in a `Jenkinsfile` using the
+[declarative syntax](https://www.jenkins.io/doc/book/pipeline/syntax/#declarative-pipeline).
+Scripted syntax still exists and appears inside `script {}` blocks and
+shared libraries, but new pipelines should be declarative: it is
+validated before it runs, it is easier to review, and it is what the
+tooling and documentation assume. `my-app/Jenkinsfile` is a starter.
 
-Server failures must be accounted for when architecting Jenkins
-infrastructure. Generally, there are 2 options for backup: Instance backup
-and Volume backup. Because we are administering Jenkins from AWS, we will
-focus on Instance backup -- Volume backups can be performed by enabling
-the appropriate plugin and setting a backup schedule.
+#### Lab 14.4.1: A declarative Jenkinsfile
 
-Ensure that your Jenkins master instance has been created and is EBS backed.
+- Read [Using a Jenkinsfile](https://www.jenkins.io/doc/book/pipeline/jenkinsfile/)
+  and [Branches and pull requests](https://www.jenkins.io/doc/book/pipeline/multibranch/).
+- Finish the starter: use the Maven tool from Lab 14.3.3 and publish the
+  JUnit results.
+- Create a **Multibranch Pipeline** job for your lab repository (a public
+  repository needs no credentials to clone over HTTPS). Commit and push to
+  `main` and to a feature branch and watch each branch get its own job.
+- Your controller can't receive webhooks. Configure periodic branch
+  scanning instead.
+- Use [Replay](https://www.jenkins.io/doc/book/pipeline/development/#replay)
+  to try a change without committing it.
 
-[Take a snapshot](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/ebs-creating-snapshot.html)
-of the  master instance volume containing configuration, history, logs
-necessary to be restored.
+##### Question: Webhooks
 
-Terminate the Jenkins master instance.
+_Polling works but wastes calls and adds delay. How would you get GitHub
+webhooks to this controller without opening it to the internet? Compare
+putting a load balancer in front, relaying through Amazon API Gateway and
+Lambda, and a relay service._
 
-Instantiate a new Jenkins master instance but using the Jenkins EBS
-snapshot you previously took and verify configuration, build history,
-logs, plugins are there from before.
+#### Lab 14.4.2: Artifacts and parameters
+
+##### Task: Artifact storage
+
+Artifacts kept on the controller's disk are lost with it and fill it up.
+
+- Add [Artifact Manager on S3](https://plugins.jenkins.io/artifact-manager-s3/)
+  to `plugins.txt` and configure it in JCasC to use the stack's bucket with
+  the `artifacts/` prefix and the instance profile (no credentials).
+- Finish the controller's `controller-bucket` policy from the plugin's
+  README; add nothing it doesn't ask for.
+- Archive the jar with `archiveArtifacts` and find it in S3.
+
+##### Task: Build parameters
+
+- Add a string, a choice and a boolean parameter and use them in a stage of
+  their own. Note what happens the first time a branch job runs after you
+  add them.
+
+##### Question: Who uploads?
+
+_The build ran on the agent, and the agent's role has no S3 permissions.
+How did the jar get into the bucket? What does that mean for a malicious
+build that wants to overwrite another job's artifacts?_
+
+#### Lab 14.4.3: AWS permissions for builds
+
+- Create a parameter `/<you>/jenkins/greeting` in Parameter Store (in a
+  template, not the console).
+- Add a stage that reads it with the AWS CLI. It fails; read the error.
+- Fix it the right way: a policy on the **agent** role in `base.yaml` that
+  allows `ssm:GetParameter` on that one parameter. Don't add credentials to
+  Jenkins and don't touch the controller role.
+
+##### Question: One role for every build
+
+_Every build on these agents gets the same role. What goes wrong when two
+teams with different permissions share this cloud? How would you give each
+team its own role (hint: agent templates and labels, and who may use
+them)?_
+
+#### Lab 14.4.4: Pipeline reuse with a shared library
+
+Every team copying the same Jenkinsfile quickly becomes hard to maintain.
+A [shared library](https://www.jenkins.io/doc/book/pipeline/shared-libraries/)
+keeps common steps in one repository.
+
+- Create a library repository (or a directory of your lab repository) with
+  `vars/mvnBuild.groovy`, a step that prints the environment with `env` and
+  runs `mvn -B clean verify`.
+- Configure it as a global library in JCasC, pinned to a tag rather than a
+  branch.
+- Replace the `sh 'mvn ...'` step with `mvnBuild()` and confirm in the build
+  log that the library ran.
+
+##### Question: Trusted code
+
+_Global libraries run outside the Groovy sandbox. What does that mean for
+who may push to the library repository, and why did you pin it to a tag?_
 
 ### Retrospective 14.4
 
-#### Question: Instance Backup
+#### Question: Build definition management
 
-_The benefits of using EBS for snapshots are that snapshots are
-incremental, can be encrypted, and are stored in S3. It should be noted
-that when snapshots are made on a running instance, cached data and
-certain activities may be excluded if they occur after the time the
-snapshot command was issued._
+_Build definitions usually live in each project's repository. With many
+projects, how would you centralise them so that a platform team controls
+what every pipeline must do (tests, scans, approvals) while teams still
+own their builds?_
 
-_How would you auto-schedule volume snapshots to periodically occur and
-use the latest backup for recovery?_
+#### Question: Jenkins or CodePipeline?
+
+_You built the same kind of pipeline with CodePipeline in module 12.
+Compare them on what you operate, how builds get AWS permissions, cost when
+idle, and plugin risk. When would you still choose Jenkins in 2026?_
+
+## Lesson 14.5: Backup and recovery
+
+### Principle 14.5
+
+*Anything that can go wrong will go wrong. Rebuild configuration from code;
+back up only the data code can't recreate.*
+
+### Practice 14.5
+
+After Lesson 14.2, the controller's configuration comes from Git.
+`JENKINS_HOME` (`/var/lib/jenkins`) still holds build history, job state,
+credentials added by hand and the key that encrypts stored secrets. Read
+[Backing-up/Restoring Jenkins](https://www.jenkins.io/doc/book/system-administration/backing-up/)
+first: it lists what matters in `JENKINS_HOME` and what doesn't.
+
+#### Lab 14.5.1: Scheduled snapshots
+
+- In a separate template, create an
+  [Amazon Data Lifecycle Manager](https://docs.aws.amazon.com/ebs/latest/userguide/snapshot-lifecycle.html)
+  policy (or an [AWS Backup](https://docs.aws.amazon.com/aws-backup/latest/devguide/whatisbackup.html)
+  plan) that snapshots volumes tagged `Name=<you>-jenkins-home` daily and
+  keeps three.
+- Take one snapshot now as well, so you don't have to wait a day.
+
+##### Question: A consistent snapshot
+
+_Jenkins keeps writing while the snapshot is taken. Is a snapshot of a
+running controller safe to restore? What would you do before a snapshot to
+make it consistent, and what does that cost in availability?_
+
+#### Lab 14.5.2: Restore JENKINS_HOME
+
+- Run a few builds, snapshot, then delete a job and its builds.
+- Restore with a
+  [root volume replacement](https://docs.aws.amazon.com/ebs/latest/userguide/replace-root.html)
+  from your snapshot. Confirm the job, its build history and its artifacts
+  (in S3) are back.
+- Time it. That is your recovery time for this design.
+
+##### Question: RTO and RPO
+
+_With daily snapshots and the restore you just timed, what are this
+controller's RPO and RTO? How would you shrink each (for example, JENKINS_HOME
+on its own EBS volume or on EFS, an Auto Scaling group of one, more
+frequent snapshots), and what does each cost?_
+
+#### Lab 14.5.3: Clean up the module
+
+- Stop any running builds, then check for agents the plugin didn't clean
+  up: `aws ec2 describe-instances --filters
+  Name=tag:jenkins_cloud_name,Values=<you>-agents
+  Name=instance-state-name,Values=pending,running,stopped`. Terminate them:
+  running agents keep the agent security group and instance profile in use,
+  so the stack deletion fails.
+- Empty the bucket (`aws s3 rm s3://<bucket> --recursive`).
+- Delete the stacks: `<you>-jenkins`, the snapshot policy stack, any
+  `-b` stack from Lab 14.2.4, and the parameter from Lab 14.4.3.
+- Delete the snapshots the policy and you made
+  (`aws ec2 describe-snapshots --owner-ids self` filtered by tag), and the
+  `/<you>/jenkins` log group if its stack didn't own it.
+- Confirm nothing tagged with your `Student` tag is left, with the Resource
+  Groups Tagging API (`aws resourcegroupstaggingapi get-resources`).
+
+### Retrospective 14.5
+
+#### Question: What to back up
+
+_List what in `JENKINS_HOME` you would still back up now that configuration
+is in Git, and what you would deliberately leave out. Where does
+`secrets/master.key` fit, and what happens to stored credentials if you
+restore everything except it?_
 
 ## Further Reading
 
-- [Jenkins Configuration as Code Plugin](https://github.com/jenkinsci/configuration-as-code-plugin):
-  streamline jenkins provisioning using coded configuration
-- [Multibranch Pipeline](https://jenkins.io/doc/book/pipeline/multibranch/):
-  useful for executing pipelines defined in separate branches
-- [Pipeline Access Authorization](https://jenkins.io/doc/book/system-administration/security/build-authorization/):
-  control user access to pipelines
-- [Parallel Stages](https://jenkins.io/blog/2018/07/02/whats-new-declarative-piepline-13x-sequential-stages/):
-  beneficial for running concurrent processes to speed up build time
-- [AWS Automation with Jenkins](https://docs.aws.amazon.com/systems-manager/latest/userguide/automation-jenkins.html):
-  provides the ability to execute on-demand and scheduled tasks
-- [Standard Security Options](https://wiki.jenkins.io/display/JENKINS/Standard+Security+Setup):
-  for controlling access & privileges
+- [Jenkins LTS changelog](https://www.jenkins.io/changelog-stable/) and the
+  [LTS upgrade guides](https://www.jenkins.io/doc/upgrade-guide/): read
+  them before every upgrade; 2.555.x is the one that required Java 21.
+- [Java support policy](https://www.jenkins.io/doc/book/platform-information/support-policy-java/):
+  which Java versions each Jenkins line supports.
+- [Jenkins security advisories](https://www.jenkins.io/security/advisories/):
+  most are about plugins, which is why you pin and review them.
+- [Securing Jenkins](https://www.jenkins.io/doc/book/security/) and
+  [Controller isolation](https://www.jenkins.io/doc/book/security/controller-isolation/):
+  why builds shouldn't run on the controller.
+- [Access Control for Builds](https://www.jenkins.io/doc/book/security/build-authorization/):
+  which identity a build runs as inside Jenkins.
+- [Parallel stages and matrix](https://www.jenkins.io/doc/book/pipeline/syntax/#parallel):
+  run stages concurrently, for example on x86_64 and Graviton agents.
+- [Authenticate users using an Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-authenticate-users.html):
+  the building block for the load-balancer design in Retrospective 14.1.

@@ -1,0 +1,294 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Stelligent-U module 27 starter: the target workload for the resilience labs.
+  An internet-facing Application Load Balancer in front of an Auto Scaling
+  group of nginx web servers (Amazon Linux 2023, launch template, IMDSv2),
+  spread across two or three Availability Zones. Each page says which
+  version, instance and Availability Zone answered. The TODO(student) markers
+  are filled in during the module's labs.
+
+Parameters:
+  StudentId:
+    Type: String
+    Description: Your identifier, used in names and tags (for example jdoe).
+    AllowedPattern: '^[a-z0-9-]{2,20}$'
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC for the workload (the default VPC works).
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >-
+      Two or three public subnets of VpcId, each in a different Availability
+      Zone. Zonal shift and the FIS labs need at least two.
+  ClientCidr:
+    Type: String
+    Description: >-
+      The only address range allowed to reach the load balancer, for example
+      your public IPv4 address as a /32.
+    AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+  AppVersion:
+    Type: String
+    Description: >-
+      The version string the web page shows. Change it to roll out a "new
+      release" (Lesson 27.1).
+    Default: v1
+    AllowedPattern: '^[A-Za-z0-9._-]{1,20}$'
+  InstanceCount:
+    Type: Number
+    Description: >-
+      Instances in the group. Use at least one per Availability Zone.
+    Default: 2
+    MinValue: 2
+    MaxValue: 4
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: Amazon Linux 2023 AMI, resolved from the SSM public parameter.
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+
+Resources:
+  # Session Manager and Run Command (which FIS uses in Lesson 27.2) need this.
+  WebServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+
+  WebServerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref WebServerRole
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Load balancer. HTTP from ClientCidr only.
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: HTTP from the student's address range
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref ClientCidr
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-resilience-alb
+        - Key: Student
+          Value: !Ref StudentId
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Web servers. HTTP from the load balancer only; no SSH.
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: HTTP from the load balancer
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+      SecurityGroupEgress:
+        - Description: HTTPS out for dnf, CloudFormation and Systems Manager
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-resilience-web
+        - Key: Student
+          Value: !Ref StudentId
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      Subnets: !Ref PublicSubnetIds
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      LoadBalancerAttributes:
+        # Short idle timeout so clients reconnect (and re-resolve) quickly
+        # when you shift traffic in Lesson 27.4.
+        - Key: idle_timeout.timeout_seconds
+          Value: '30'
+        # TODO(student): Lab 27.4.1 turns on ARC zonal shift integration here.
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-resilience
+        - Key: Student
+          Value: !Ref StudentId
+
+  BlueTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VpcId
+      Protocol: HTTP
+      Port: 80
+      TargetType: instance
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+      Tags:
+        - Key: Name
+          Value: !Sub ${StudentId}-blue
+        - Key: Student
+          Value: !Ref StudentId
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTP
+      Port: 80
+      # TODO(student): Lab 27.1.3 replaces this with a weighted forward action
+      # across a blue and a green target group.
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref BlueTargetGroup
+
+  WebServerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          All:
+            - InstallWebServer
+        InstallWebServer:
+          packages:
+            yum:
+              nginx: []
+          services:
+            systemd:
+              nginx:
+                enabled: 'true'
+                ensureRunning: 'true'
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref LatestAmiId
+        InstanceType: !Ref InstanceType
+        IamInstanceProfile:
+          Arn: !GetAtt WebServerInstanceProfile.Arn
+        MetadataOptions:
+          HttpTokens: required
+          HttpEndpoint: enabled
+          HttpPutResponseHopLimit: 1
+        # Public IPs let the instances reach dnf, CloudFormation and Systems
+        # Manager without a NAT gateway. Each is a billed public IPv4 address.
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: true
+            Groups:
+              - !Ref WebServerSecurityGroup
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub ${StudentId}-resilience-web
+              - Key: Student
+                Value: !Ref StudentId
+              # TODO(student): Lesson 27.2 adds the tag your FIS targets select on.
+          - ResourceType: volume
+            Tags:
+              - Key: Student
+                Value: !Ref StudentId
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -x
+            # No "-e": if cfn-init fails we still want cfn-signal to report it.
+            APP_VERSION='${AppVersion}'
+
+            dnf install -y aws-cfn-bootstrap
+
+            /opt/aws/bin/cfn-init -v \
+              --stack ${AWS::StackName} \
+              --resource WebServerLaunchTemplate \
+              --configsets All \
+              --region ${AWS::Region}
+            INIT_RESULT=$?
+
+            # Say who answered: version, instance and Availability Zone (IMDSv2).
+            TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token \
+              -H 'X-aws-ec2-metadata-token-ttl-seconds: 300')
+            IMDS() {
+              curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+                "http://169.254.169.254/latest/meta-data/$1"
+            }
+            INSTANCE_ID=$(IMDS instance-id)
+            AZ=$(IMDS placement/availability-zone)
+            AZ_ID=$(IMDS placement/availability-zone-id)
+            echo "$APP_VERSION $INSTANCE_ID $AZ $AZ_ID" \
+              > /usr/share/nginx/html/index.html
+
+            /opt/aws/bin/cfn-signal -e $INIT_RESULT \
+              --stack ${AWS::StackName} \
+              --resource WebServerAsg \
+              --region ${AWS::Region}
+
+  WebServerAsg:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      ResourceSignal:
+        Count: !Ref InstanceCount
+        Timeout: PT10M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 1
+        WaitOnResourceSignals: true
+        PauseTime: PT10M
+    Properties:
+      VPCZoneIdentifier: !Ref PublicSubnetIds
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebServerLaunchTemplate
+        Version: !GetAtt WebServerLaunchTemplate.LatestVersionNumber
+      MinSize: !Ref InstanceCount
+      MaxSize: !Ref InstanceCount
+      DesiredCapacity: !Ref InstanceCount
+      TargetGroupARNs:
+        - !Ref BlueTargetGroup
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 120
+      # TODO(student): Lab 27.4.1 adds an AvailabilityZoneImpairmentPolicy.
+      Tags:
+        - Key: Student
+          Value: !Ref StudentId
+          PropagateAtLaunch: false
+
+  # TODO(student): Lab 27.2.1 adds the steady-state alarms that every FIS
+  # experiment in this module uses as its stop condition.
+
+Outputs:
+  LoadBalancerDnsName:
+    Description: Point your probe loop here.
+    Value: !GetAtt LoadBalancer.DNSName
+  LoadBalancerArn:
+    Value: !Ref LoadBalancer
+  LoadBalancerFullName:
+    Description: The LoadBalancer dimension for ALB metrics in CloudWatch.
+    Value: !GetAtt LoadBalancer.LoadBalancerFullName
+  BlueTargetGroupFullName:
+    Description: The TargetGroup dimension for target group metrics.
+    Value: !GetAtt BlueTargetGroup.TargetGroupFullName
+  AutoScalingGroupName:
+    Value: !Ref WebServerAsg
