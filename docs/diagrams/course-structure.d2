@@ -1,0 +1,39 @@
+direction: down
+
+phases: "Phases (in exam order)" {
+  grid-columns: 3
+  p1: "1. Foundations\n00, 01, 02, 03, 19\n(CLF, then everything)"
+  p2: "2. Core infrastructure\n04, 05, 06, 07, 21, 22, 23\n(SAA)"
+  p3: "3. Operations\n08, 10, 11, 20, 26\n(CloudOps)"
+  p4: "4. Serverless and apps\n09, 16, 18, 24, 25\n(DVA)"
+  p5: "5. Delivery and containers\n12, 13, 14, 15, 17, 27\n(DOP)"
+  p6: "6. AI\n28\n(AIF, alongside phase 1)"
+}
+
+m19: "Module 19: multi-account foundation\ncreates the dedicated lab account\n(AWS Organizations, IAM Identity Center)"
+
+lab: {
+  shape: cloud
+  label: "Lab account\nhome region us-east-2\n(cleanup tooling runs here only)"
+}
+
+module: "Every module" {
+  grid-columns: 1
+  changed: "What changed in the 2026 edition"
+  exam: "Exam coverage\n(exam and domain per lab)"
+  cost: "Cost and cleanup"
+  lessons: "Lessons: Principle, Practice, Labs with Questions,\nRetrospective, Further Reading"
+  cleanup: "Final cleanup step"
+}
+
+repo: "Changes to this repository" {
+  grid-columns: 1
+  pr: "pull request to master or main"
+  lint: "GitHub Actions lint workflow\nmarkdownlint (mdl) + cfn-lint"
+  pr -> lint
+}
+
+phases.p1 -> m19: "early in phase 1"
+m19 -> lab
+phases -> module: "each module follows"
+module.lessons -> lab: "labs run in"

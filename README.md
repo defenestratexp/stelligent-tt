@@ -88,3 +88,9 @@ for the plan and [AUTHORING-2026.md](AUTHORING-2026.md) for the conventions.
 
 Work through them in the phase order in the update plan, which follows the
 exam order. Module 19 comes early: it creates the lab account the other labs use.
+
+![Course structure: six phases in exam order, module 19 creating the lab account, the standard sections in every module, and the lint workflow on pull requests](docs/diagrams/course-structure.png)
+
+Pull requests to this repository run a lint workflow
+(`.github/workflows/main.yaml`): markdownlint (`mdl`) over the Markdown and
+`cfn-lint` over the CloudFormation templates the course ships.
