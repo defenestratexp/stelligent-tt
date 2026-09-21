@@ -2,6 +2,10 @@
 
 # Welcome to Stelligent U
 
+> This repository is the 2026 edition of [stelligent/stelligent-u](https://github.com/stelligent/stelligent-u),
+> Stelligent's open-source engineer onboarding course, which is MIT licensed (see [LICENSE](LICENSE)).
+> The original course history is preserved here; the 2026 updates are described below.
+
 Welcome to the technical side of Stelligent University,
 [Stelligent's](https://stelligent.com) onboarding program for engineers. This
 repo includes a series of learning modules designed to give cloud engineers
